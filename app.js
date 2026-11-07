@@ -21,6 +21,8 @@
     surprise: false,
     volume: 0.8,
     muted: false,
+    announce: true,
+    listen: true,
   };
   const KEY = 'ctu-settings-v1';
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -312,6 +314,196 @@
     };
   })();
 
+  // ================= Voice announcer (text-to-speech) =================
+  const Voice = (() => {
+    const synth = window.speechSynthesis;
+    let voice = null, primed = false, pending = 0;
+    function pick() {
+      if (!synth) return;
+      const en = synth.getVoices().filter((v) => /^en[-_]/i.test(v.lang));
+      const pref = ['Daniel', 'Arthur', 'Samantha', 'Karen', 'Moira', 'Google UK English Male', 'Google US English'];
+      voice = pref.map((n) => en.find((v) => v.name.startsWith(n))).find(Boolean) || en.find((v) => v.localService) || en[0] || null;
+    }
+    if (synth) { pick(); synth.addEventListener && synth.addEventListener('voiceschanged', pick); }
+    function prime() {
+      if (!synth || primed) return;
+      try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u); primed = true; } catch (e) { /* ignore */ }
+    }
+    function say(text, { rate = 1.06, pitch = 1 } = {}) {
+      if (!synth || !S.announce || S.muted) return;
+      const go = () => {
+        try {
+          const u = new SpeechSynthesisUtterance(text);
+          if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-US';
+          u.rate = rate; u.pitch = pitch;
+          u.volume = Math.max(0.3, Math.min(1, S.volume + 0.25));
+          synth.speak(u);
+        } catch (e) { /* ignore */ }
+      };
+      clearTimeout(pending);
+      if (synth.speaking || synth.pending) { synth.cancel(); pending = setTimeout(go, 90); } else go();
+    }
+    function stop() { clearTimeout(pending); try { synth && synth.cancel(); } catch (e) { /* ignore */ } }
+    return { say, prime, stop };
+  })();
+  const sayAmount = (k) => (k >= 1000 ? `${parseFloat((k / 1000).toFixed(2))} million` : `${k} thousand`);
+
+  // ================= Listening for spoken bids (Web Speech API) =================
+  const Listener = (() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let rec = null, want = false, session = 0, state = 'off';
+    const api = { supported: !!SR, onText: null, onState: null, get active() { return want; } };
+    function set(s, err) { state = s; api.onState && api.onState(s, err); }
+    function boot() {
+      try {
+        const my = ++session;
+        rec = new SR();
+        rec.lang = /^en/i.test(navigator.language || '') ? navigator.language : 'en-US';
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        rec.onstart = () => { if (my === session) set('on'); };
+        rec.onresult = (e) => {
+          if (my !== session) return;
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            api.onText && api.onText(my + ':' + i, e.results[i][0].transcript, e.results[i].isFinal);
+          }
+        };
+        rec.onerror = (e) => {
+          if (my !== session) return;
+          if (e.error === 'no-speech' || e.error === 'aborted') return;
+          want = false;
+          set('error', e.error);
+        };
+        rec.onend = () => {
+          if (my !== session) return;
+          if (want) setTimeout(() => { if (want && my === session) boot(); }, 120);
+          else if (state !== 'error') set('off');
+        };
+        rec.start();
+        set('starting');
+      } catch (err) {
+        want = false;
+        set('error', 'start-failed');
+      }
+    }
+    api.start = () => { if (!SR) { set('error', 'unsupported'); return; } want = true; boot(); };
+    api.stop = () => {
+      want = false;
+      session++;
+      try { rec && rec.abort(); } catch (e) { /* ignore */ }
+      rec = null;
+      set('off');
+    };
+    return api;
+  })();
+
+  // ---- Turning speech into a bid ----
+  const COLOR_WORDS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+  const ORD_WORDS = ['one', 'two', 'three', 'four', 'five', 'six'];
+  const NUM_WORDS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+  const UNIT_K = new Set(['k', 'thousand', 'grand', 'thou']);
+  const UNIT_M = new Set(['m', 'million', 'mil', 'millions']);
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  function findNames(text) {
+    const hits = [];
+    S.players.forEach((_, i) => {
+      const aliases = new Set();
+      const nm = playerName(i).toLowerCase().trim();
+      if (nm) aliases.add(nm);
+      const first = nm.split(/\s+/)[0];
+      if (first && first.length > 2 && first !== 'player') aliases.add(first);
+      aliases.add(COLOR_WORDS[i]);
+      aliases.add(`player ${i + 1}`);
+      aliases.add(`player ${ORD_WORDS[i]}`);
+      for (const a of aliases) {
+        const re = new RegExp(`(^|[^a-z0-9])(${escRe(a)})(?=$|[^a-z0-9])`, 'g');
+        let m;
+        while ((m = re.exec(text))) hits.push({ i, start: m.index + m[1].length, end: m.index + m[1].length + m[2].length });
+      }
+    });
+    return hits.sort((a, b) => a.start - b.start);
+  }
+
+  function parseNumbers(text) {
+    const out = [];
+    let cur = null;
+    const fresh = (start) => ({ total: 0, current: 0, unit: false, any: false, a: false, start, end: start, last: '' });
+    const flush = () => {
+      if (cur && cur.any) {
+        const v = cur.total + cur.current;
+        const k = cur.unit ? v : v >= 10000 ? v / 1000 : v;
+        out.push({ k: Math.round(k), start: cur.start, end: cur.end });
+      }
+      cur = null;
+    };
+    const re = /(\d+(?:\.\d+)?)\s*([km])?(?![a-z])|[a-z]+/g;
+    let m;
+    while ((m = re.exec(text))) {
+      const tok = m[0], at = m.index;
+      const endAt = m.index + (m[1] && !m[2] ? m[1].length : tok.length);
+      if (m[1]) {
+        const val = parseFloat(m[1]);
+        if (cur && cur.any && cur.last !== 'hundred' && cur.last !== 'and') flush();
+        if (!cur) cur = fresh(at);
+        cur.current += val; cur.any = true; cur.last = 'num'; cur.end = endAt;
+        if (m[2] === 'k') { cur.total += cur.current; cur.current = 0; cur.unit = true; flush(); }
+        else if (m[2] === 'm') { cur.total += cur.current * 1000; cur.current = 0; cur.unit = true; flush(); }
+        continue;
+      }
+      const w = tok;
+      if (w in NUM_WORDS) {
+        const v = NUM_WORDS[w];
+        if (!cur) cur = fresh(at);
+        if (cur.any && cur.last !== 'hundred' && cur.last !== 'and') {
+          if (cur.last === 'tens' && v < 10) cur.current += v;                              // "sixty five"
+          else if (cur.current >= 1 && cur.current <= 9 && v >= 10 && !cur.sawHundred) cur.current = cur.current * 100 + v; // "one fifty"
+          else { flush(); cur = fresh(at); cur.current = v; }
+        } else cur.current += v;
+        cur.any = true; cur.end = endAt;
+        cur.last = v >= 20 && v % 10 === 0 ? 'tens' : 'small';
+      } else if (w === 'hundred') {
+        if (!cur) cur = fresh(at);
+        cur.current = (cur.current || 1) * 100; cur.any = true; cur.sawHundred = true; cur.last = 'hundred'; cur.end = endAt;
+      } else if (UNIT_K.has(w) && cur && (cur.any || cur.a)) {
+        cur.total += cur.current || 1; cur.current = 0; cur.unit = true; cur.any = true; cur.end = endAt; flush();
+      } else if (UNIT_M.has(w) && cur && (cur.any || cur.a)) {
+        cur.total += (cur.current || 1) * 1000; cur.current = 0; cur.unit = true; cur.any = true; cur.end = endAt; flush();
+      } else if (w === 'and' && cur && cur.any) {
+        cur.last = 'and';
+      } else if (w === 'a' || w === 'an') {
+        flush(); cur = fresh(at); cur.a = true;
+      } else {
+        flush();
+      }
+    }
+    flush();
+    return out;
+  }
+
+  function parseBid(raw) {
+    const text = ' ' + String(raw).toLowerCase().replace(/[$£€]/g, '').replace(/(\d),(?=\d{3}(\D|$))/g, '$1') + ' ';
+    const names = findNames(text);
+    const chars = text.split('');
+    for (const h of names) for (let j = h.start; j < h.end; j++) chars[j] = ' ';
+    const nums = parseNumbers(chars.join('')).filter((n) => n.k >= 10 && n.k <= 100000);
+    const last = nums[nums.length - 1] || null;
+    let bidder = null;
+    if (last) {
+      const prev = nums[nums.length - 2];
+      const from = prev ? prev.end : -1;
+      let best = null, bd = Infinity;
+      for (const h of names) {
+        if (h.start < from) continue;
+        const d = Math.abs(h.start - last.start);
+        if (d < bd) { bd = d; best = h; }
+      }
+      if (best) bidder = best.i;
+    }
+    return { amount: last ? last.k : 0, bidder };
+  }
+
   // ================= Screen wake lock =================
   let wakeLock = null;
   async function keepAwake() {
@@ -325,7 +517,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') keepAwake();
   });
-  function firstGesture() { Sound.unlock(); keepAwake(); }
+  function firstGesture() { Sound.unlock(); Voice.prime(); keepAwake(); }
   window.addEventListener('touchend', firstGesture, { passive: true });
   window.addEventListener('click', firstGesture);
 
@@ -515,28 +707,39 @@
     if (D.main.animate) D.main.animate([{ transform: 'scale(1.14)' }, { transform: 'scale(1)' }], { duration: 140, easing: 'ease-out' });
   }
   function idleDisplay() {
-    setDisplay({ label: 'TRADING UNIT · ON', main: '<span class="word">READY</span>', sub: 'Build once per turn · Banker starts auctions', tone: '' });
+    setDisplay({ label: 'TRADING UNIT · ON', main: '<span class="word">READY</span>', sub: 'BUILD below · tap the handshake to auction', tone: '' });
   }
 
-  // ================= Rim segments =================
-  const SEG_COUNT = 12;
-  const SEG_VALUES = Array.from({ length: SEG_COUNT }, (_, i) => OUTCOMES[i % 4]);
-  const segsEl = $('#segs');
-  segsEl.innerHTML = SEG_VALUES.map((v, i) =>
-    `<div class="seg-arm" style="--a:${i * (360 / SEG_COUNT)}deg"><div class="seg v${v}" data-i="${i}"><div class="seg-glyph">${glyph(v)}</div></div></div>`
-  ).join('');
-  const segs = $$('.seg', segsEl);
+  // ================= Ring positions (like the real unit: 2 top, 3 right, station bottom, 1 left) =================
+  const RING_ORDER = ['2', '3', 'S', '1']; // clockwise
+  const ringLights = RING_ORDER.map((v) => $('#rl-' + v));
+  const ringLabels = RING_ORDER.map((v) => $('#lbl-' + v));
   let spinPos = 0;
   function light(i) {
-    segs.forEach((s, k) => {
-      s.classList.toggle('lit', i >= 0 && k === i);
-      s.classList.toggle('trail', i >= 0 && k === (i - 1 + SEG_COUNT) % SEG_COUNT);
+    RING_ORDER.forEach((_, k) => {
+      const on = i >= 0 && k === i;
+      const trail = i >= 0 && k === (i - 1 + 4) % 4;
+      ringLights[k].classList.toggle('lit', on);
+      ringLights[k].classList.toggle('trail', trail);
+      ringLabels[k].classList.toggle('lit', on);
     });
   }
-  function segCenter(i) {
-    const r = segs[i].getBoundingClientRect();
+  function posCenter(i) {
+    const r = ringLabels[i].getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }
+  // grip ridges on the rubber band
+  (() => {
+    const g = $('#grip-notches');
+    let html = '';
+    for (let a = 140; a <= 292; a += 15) {
+      const rad = (a * Math.PI) / 180;
+      const x1 = 200 + 154 * Math.cos(rad), y1 = 200 + 154 * Math.sin(rad);
+      const x2 = 200 + 182 * Math.cos(rad), y2 = 200 + 182 * Math.sin(rad);
+      html += `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)}"/>`;
+    }
+    g.innerHTML = html;
+  })();
 
   // ================= Overlay =================
   const ov = $('#overlay'), rc = $('#rc');
@@ -558,15 +761,14 @@
   ov.addEventListener('click', () => { Sound.click(); hideOverlay(); });
 
   // ================= Buttons state =================
-  const btnBuild = $('#btn-build'), btnAuction = $('#btn-auction'), btnDeal = $('#btn-deal'), core = $('#core');
+  const btnBuild = $('#btn-build'), btnDeal = $('#btn-deal'), core = $('#core');
   let spinning = false;
   function syncButtons() {
     const lock = spinning || timer.running;
     btnBuild.disabled = lock;
-    btnAuction.disabled = lock;
     btnDeal.disabled = lock;
     body.classList.toggle('busy', spinning);
-    btnBuild.querySelector('span').textContent = spinning ? 'SPINNING' : 'BUILD';
+    $('#build-caption').textContent = spinning ? 'SPINNING…' : 'BUILD';
   }
 
   // ================= BUILD =================
@@ -578,33 +780,32 @@
     Sound.press();
     haptic();
     const result = pickOutcome();
-    const targets = SEG_VALUES.map((v, i) => (v === result ? i : -1)).filter((i) => i >= 0);
-    const target = targets[Math.floor(rand() * targets.length)];
-    let steps = 2 * SEG_COUNT + ((target - spinPos + SEG_COUNT) % SEG_COUNT);
-    if (steps < 2 * SEG_COUNT + 3) steps += SEG_COUNT;
+    const target = RING_ORDER.indexOf(result);
+    const steps = 16 + ((target - spinPos + 4) % 4) + 4 * Math.floor(rand() * 2);
     setDisplay({ label: 'BUILD PERMIT', main: '', sub: 'Spinning…', tone: '' });
     for (let i = 1; i <= steps; i++) {
-      spinPos = (spinPos + 1) % SEG_COUNT;
-      const v = SEG_VALUES[spinPos];
+      spinPos = (spinPos + 1) % 4;
+      const v = RING_ORDER[spinPos];
       light(spinPos);
       D.main.innerHTML = glyph(v);
       D.el.dataset.tone = 'b' + v;
       Sound.tick(v);
       const t = i / steps;
-      await sleep(26 + 330 * Math.pow(t, 2.7));
+      await sleep(38 + 400 * Math.pow(t, 2.4));
     }
     // landed
-    segs.forEach((s) => s.classList.remove('trail'));
-    const seg = segs[spinPos];
-    seg.classList.add('won');
-    setTimeout(() => seg.classList.remove('won'), 1400);
+    ringLights.forEach((r) => r.classList.remove('trail'));
+    const lit = ringLights[spinPos];
+    lit.classList.add('won');
+    setTimeout(() => lit.classList.remove('won'), 1400);
     const col = VALUE_COLOR[result];
-    const p = segCenter(spinPos);
-    FX.burst(p.x, p.y, [col, '#ffffff', col]);
+    const p = posCenter(spinPos);
+    FX.burst(p.x, p.y, [col, '#ffffff', '#ffc65a']);
     Sky.celebrate();
     haptic();
     if (result === 'S') {
       Sound.station();
+      setTimeout(() => Voice.say('Station! Build a station.'), 1100);
       setDisplay({ label: 'BUILD PERMIT', main: TRAIN_SVG + '<span class="word">STATION</span>', sub: 'Build a station — no blocks this turn', tone: 'bS' });
       showOverlay(
         `<div class="rc-kicker">BUILD PERMIT</div><div class="rc-train">${TRAIN_SVG}</div><div class="rc-text">Build a <b>STATION</b><br>No blocks this turn</div><div class="rc-hint">TAP TO CLOSE</div>`,
@@ -612,6 +813,7 @@
     } else {
       const n = Number(result);
       Sound.land(result);
+      setTimeout(() => Voice.say(n === 1 ? 'One block.' : `${n} blocks!`), 650);
       setDisplay({ label: 'BUILD PERMIT', main: `${n}<span class="unit-sfx">${n === 1 ? 'BLOCK' : 'BLOCKS'}</span>`, sub: `Build up to ${n} block${n > 1 ? 's' : ''} this turn`, tone: 'b' + n });
       const shades = { 1: ['#a7f3d0', '#34d399', '#059669'], 2: ['#bae6fd', '#38bdf8', '#0284c7'], 3: ['#fde68a', '#fbbf24', '#d97706'] }[n];
       const cubes = Array.from({ length: n }, (_, i) => CUBE_SVG(...shades).replace('<svg ', `<svg style="animation-delay:${0.25 + i * 0.18}s" `)).join('');
@@ -629,7 +831,7 @@
   const timer = { running: false, mode: 'auction', start: 0, total: 50, warnAt: 5, phase: 'idle', lastSec: 0, lastHalf: 0, raf: 0 };
   const bid = { amount: 0, bidder: null, history: [] };
   const sheet = $('#sheet'), ringBar = $('#ring-bar');
-  const RING_C = 2 * Math.PI * 146;
+  const RING_C = 2 * Math.PI * 114;
 
   function startTimer(mode) {
     if (timer.running || spinning) return;
@@ -656,6 +858,10 @@
     renderBid();
     haptic();
     if (mode === 'deal') Sound.dealStart(); else Sound.auctionStart();
+    lastAnnounced = '';
+    timer.said1 = false; timer.said2 = false;
+    setTimeout(() => { if (timer.running) Voice.say(mode === 'deal' ? 'Deal timer. Make your deal.' : 'Auction open! Place your bids.'); }, 550);
+    startListening();
     syncButtons();
     cancelArmed = false; $('#act-cancel').classList.remove('confirm'); $('#act-cancel').textContent = 'Cancel';
     loop();
@@ -676,6 +882,11 @@
       body.classList.add('warn');
       Sound.warnStart();
       haptic();
+      Voice.say(timer.mode === 'deal' ? 'Five seconds left!' : 'Five seconds! Final bids!');
+    }
+    if (timer.phase === 'warn' && timer.mode === 'auction') {
+      if (!timer.said1 && remaining <= 3.3) { timer.said1 = true; Voice.say('Going once!'); }
+      else if (!timer.said2 && remaining <= 1.75) { timer.said2 = true; Voice.say('Going twice!'); }
     }
     const sec = Math.ceil(remaining);
     const half = Math.ceil(remaining * 2);
@@ -711,6 +922,8 @@
 
   function stopTimerUI() {
     timer.running = false;
+    clearTimeout(announceTimer);
+    Listener.stop();
     cancelAnimationFrame(timer.raf);
     body.classList.remove('in-timer', 'led-pulse', 'warn', 'surprise', 'keypad-open');
     sheet.classList.remove('open');
@@ -728,17 +941,20 @@
     haptic();
     if (reason === 'cancel') {
       Sound.cancel();
+      Voice.say(mode === 'deal' ? 'Deal cancelled.' : 'Auction cancelled.');
       setDisplay({ label: mode === 'deal' ? 'DEAL TIMER' : 'AUCTION', main: '<span class="word">CANCELLED</span>', sub: 'Nothing changed hands', tone: '' });
       return;
     }
     if (mode === 'deal') {
       if (reason === 'done') {
         Sound.dealDone();
+        Voice.say('Deal!');
         FX.confetti(['#38bdf8', '#7dd3fc', '#ffffff', '#fbbf24']);
         setDisplay({ label: 'DEAL TIMER', main: '<span class="word">DEAL!</span>', sub: 'Shake on it', tone: 'deal' });
         showOverlay(`<div class="rc-kicker">DEAL TIMER</div><div class="stamp">DEAL!</div><div class="rc-text">Agreed in time. Swap the goods.</div><div class="rc-hint">TAP TO CLOSE</div>`, 'deal', 5000);
       } else {
         Sound.buzzer();
+        setTimeout(() => Voice.say("Time's up! No deal."), 700);
         setDisplay({ label: 'DEAL TIMER', main: '<span class="word">TIME</span>', sub: 'No agreement, no deal', tone: 'warn' });
         showOverlay(`<div class="rc-kicker">DEAL TIMER</div><div class="stamp">TIME!</div><div class="rc-text">No agreement means <b>no deal</b></div><div class="rc-hint">TAP TO CLOSE</div>`, 'nobid', 6000);
       }
@@ -748,6 +964,8 @@
     if (bid.amount > 0) {
       Sound.gavel();
       const who = bid.bidder != null ? playerName(bid.bidder) : 'Top bidder';
+      const soldLine = bid.bidder != null ? `Sold! To ${who}, for ${sayAmount(bid.amount)}.` : `Sold, for ${sayAmount(bid.amount)}!`;
+      setTimeout(() => Voice.say(soldLine), 950);
       const col = bid.bidder != null ? playerColor(bid.bidder) : '#fff';
       setTimeout(() => FX.confetti(['#4ade80', '#fbbf24', '#ffffff', col]), 1000);
       setDisplay({ label: 'SOLD', main: fmt(bid.amount), sub: `to ${who} — pay the Banker`, tone: 'sold' });
@@ -756,6 +974,7 @@
         'sold', 0);
     } else {
       Sound.noBids();
+      Voice.say('No bids. The district stays with the bank.');
       setDisplay({ label: 'AUCTION', main: '<span class="word">NO BIDS</span>', sub: 'The district stays with the bank', tone: '' });
       showOverlay(`<div class="rc-kicker">AUCTION</div><div class="stamp">NO BIDS</div><div class="rc-text">The district stays with the bank</div><div class="rc-hint">TAP TO CLOSE</div>`, 'nobid', 6000);
     }
@@ -782,6 +1001,15 @@
       if (bid.amount) whoEl.classList.add('prompt');
     }
     $$('.chip', chipsEl).forEach((c) => c.classList.toggle('active', Number(c.dataset.i) === bid.bidder));
+    const key = bid.amount + '|' + bid.bidder;
+    if (timer.running && timer.mode === 'auction' && bid.amount && key !== lastAnnounced) {
+      lastAnnounced = key;
+      clearTimeout(announceTimer);
+      announceTimer = setTimeout(() => {
+        if (!timer.running) return;
+        Voice.say(sayAmount(bid.amount) + (bid.bidder != null ? ', ' + playerName(bid.bidder) : ''));
+      }, 450);
+    }
     if (timer.running) renderTimerDisplay(Math.max(0, timer.total - (performance.now() - timer.start) / 1000));
   }
   function snapshot() { bid.history.push({ amount: bid.amount, bidder: bid.bidder }); }
@@ -815,6 +1043,70 @@
     Sound.undo();
     renderBid();
   }
+
+  // ---- Voice bids glue ----
+  let lastAnnounced = '', announceTimer = 0;
+  const isStandalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  const micBtn = $('#mic-btn'), micLabel = $('#mic-label'), heardEl = $('#heard');
+  const MIC_ERRORS = {
+    'not-allowed': 'Microphone blocked. In Safari, allow the microphone for this site.',
+    'service-not-allowed': isStandalone ? 'iPhone blocks speech listening in Home Screen apps. Open the link in a Safari tab for voice bids.' : 'Speech listening is off. Turn on Dictation: Settings › General › Keyboard.',
+    'network': 'Voice bids need an internet connection.',
+    'audio-capture': 'No microphone found.',
+    'unsupported': "This browser can't listen for speech. Use Safari.",
+    'start-failed': "Couldn't start the microphone. Tap the mic to try again.",
+  };
+  let heardSomething = false;
+  function setMic(state, msg) {
+    micBtn.dataset.state = state;
+    heardEl.classList.toggle('err', state === 'error' || !!msg);
+    if (state === 'on') { micLabel.textContent = 'Listening'; if (!heardSomething) heardEl.textContent = 'Say "Alex sixty" or "Blue, one fifty"'; }
+    else if (state === 'starting') { micLabel.textContent = 'Starting mic…'; heardEl.textContent = ''; }
+    else if (state === 'error') { micLabel.textContent = 'Voice bids off'; heardEl.textContent = msg || 'Voice listening stopped.'; }
+    else { micLabel.textContent = 'Voice bids off'; heardEl.textContent = msg || ''; }
+  }
+  Listener.onState = (state, err) => {
+    if (state === 'error') setMic('error', MIC_ERRORS[err] || `Voice listening stopped (${err}).`);
+    else setMic(state);
+  };
+  function startListening() {
+    heardSomething = false;
+    setMic('off');
+    if (timer.mode !== 'auction') return;
+    if (!Listener.supported) { setMic('error', MIC_ERRORS.unsupported); return; }
+    if (!S.listen) { setMic('off', 'Tap the mic to take bids by voice'); return; }
+    if (isStandalone) { setMic('off', 'Voice bids work in a Safari tab, not the Home Screen app. Tap the mic to try anyway.'); return; }
+    Listener.start();
+  }
+  micBtn.addEventListener('click', () => {
+    Sound.click();
+    if (Listener.active) { Listener.stop(); setMic('off', 'Voice bids paused'); }
+    else Listener.start();
+  });
+
+  let vstate = { key: null };
+  function onHeard(key, text) {
+    if (!timer.running || timer.mode !== 'auction') return;
+    heardSomething = true;
+    heardEl.classList.remove('err');
+    const t = String(text).trim();
+    heardEl.textContent = '“' + (t.length > 46 ? '…' + t.slice(-46) : t) + '”';
+    if (key !== vstate.key) vstate = { key, base: { amount: bid.amount, bidder: bid.bidder }, applied: false };
+    const p = parseBid(t);
+    if (!p.amount) return;
+    const canCorrect = vstate.applied && bid.amount === vstate.lastAmount && bid.bidder === vstate.lastBidder;
+    const floor = canCorrect ? vstate.base.amount : bid.amount;
+    if (p.amount <= floor) return;
+    if (!vstate.applied) snapshot();
+    const changed = bid.amount !== p.amount || bid.bidder !== p.bidder;
+    bid.amount = p.amount;
+    bid.bidder = p.bidder;
+    vstate.applied = true;
+    vstate.lastAmount = bid.amount;
+    vstate.lastBidder = bid.bidder;
+    if (changed) { Sound.coin(); haptic(); bumpAmount(); renderBid(); }
+  }
+  Listener.onText = onHeard;
 
   // ---- Keypad ----
   const keypad = $('#keypad'), kpVal = $('#kp-val');
@@ -885,7 +1177,6 @@
 
   // ================= Main buttons =================
   btnBuild.addEventListener('click', doBuild);
-  btnAuction.addEventListener('click', () => startTimer('auction'));
   core.addEventListener('click', () => { if (!timer.running && !spinning) startTimer('auction'); });
   btnDeal.addEventListener('click', () => startTimer('deal'));
 
@@ -956,11 +1247,16 @@
     save(); renderOdds(); Sound.click();
   }));
 
+  const announceEl = $('#announce'), listenEl = $('#listen');
+  announceEl.addEventListener('change', () => { S.announce = announceEl.checked; save(); if (S.announce) Voice.say('Announcer on.'); else Voice.stop(); });
+  listenEl.addEventListener('change', () => { S.listen = listenEl.checked; save(); });
   const lenEl = $('#len'), lenVal = $('#len-val'), surpriseEl = $('#surprise'), volEl = $('#vol'), volVal = $('#vol-val');
   function renderTimerSettings() {
     lenEl.value = S.auctionSecs;
     lenVal.textContent = S.auctionSecs + 's' + (S.auctionSecs === 50 ? ' (original)' : '');
     surpriseEl.checked = !!S.surprise;
+    announceEl.checked = S.announce !== false;
+    listenEl.checked = S.listen !== false;
     volEl.value = S.volume;
     volVal.textContent = Math.round(S.volume * 100) + '%';
   }
@@ -1017,5 +1313,8 @@
     },
     settings: () => S,
     sound: Sound,
+    parseBid,
+    hear: (text, key = 'test') => onHeard(key, text),
+    voice: Voice,
   };
 })();

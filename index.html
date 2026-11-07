@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 <canvas id="sky" aria-hidden="true"></canvas>
@@ -36,34 +36,108 @@
     <div class="display-glass"></div>
     <div class="display-label" id="display-label">READY</div>
     <div class="display-main" id="display-main">READY</div>
-    <div class="display-sub" id="display-sub">Build once per turn · Banker starts auctions</div>
+    <div class="display-sub" id="display-sub"></div>
   </section>
 
   <section class="unit-wrap">
     <div class="unit" id="unit">
-      <div class="unit-body"></div>
-      <svg class="ring" viewBox="0 0 300 300" aria-hidden="true">
-        <circle class="ring-track" cx="150" cy="150" r="146"/>
-        <circle class="ring-bar" id="ring-bar" cx="150" cy="150" r="146"/>
-      </svg>
-      <div class="segs" id="segs"></div>
-      <div class="core-well"></div>
-      <div class="red-led" id="red-led"></div>
-      <button class="core" id="core" aria-label="Auction button">
-        <svg class="handshake" viewBox="0 0 100 100" aria-hidden="true">
-          <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M90 78 L66 56 L44 47" stroke="#fff" stroke-width="25"/>
-            <path d="M90 78 L66 56 L44 47" stroke="#2c6be0" stroke-width="17"/>
-            <path d="M10 78 L34 56 L57 45" stroke="#fff" stroke-width="25"/>
-            <path d="M10 78 L34 56 L57 45" stroke="#e5383b" stroke-width="17"/>
-            <path d="M47 39 C55 36 62 39 64 45" stroke="#fff" stroke-width="12"/>
-            <path d="M47 39 C55 36 62 39 64 45" stroke="#2c6be0" stroke-width="6"/>
-            <path d="M43 52 L52 55 M46 47 L55 50" stroke="#fff" stroke-width="3"/>
-            <path d="M17 64 L29 77" stroke="#fff" stroke-width="5"/>
-            <path d="M83 64 L71 77" stroke="#fff" stroke-width="5"/>
+      <svg class="unit-svg" viewBox="0 0 400 400" aria-hidden="true">
+        <defs>
+          <radialGradient id="g-body" cx="0.42" cy="0.36" r="0.75">
+            <stop offset="0" stop-color="#55585e"/>
+            <stop offset="0.55" stop-color="#3d4045"/>
+            <stop offset="1" stop-color="#2a2c30"/>
+          </radialGradient>
+          <linearGradient id="g-grip" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#2a2b2f"/>
+            <stop offset="1" stop-color="#17181b"/>
+          </linearGradient>
+          <radialGradient id="g-glass" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0.78" stop-color="#1b1c1f"/>
+            <stop offset="0.86" stop-color="#4c4a44"/>
+            <stop offset="0.93" stop-color="#2b2b2c"/>
+            <stop offset="1" stop-color="#151617"/>
+          </radialGradient>
+          <radialGradient id="g-btn" cx="0.45" cy="0.35" r="0.7">
+            <stop offset="0" stop-color="#34363b"/>
+            <stop offset="0.7" stop-color="#1c1d20"/>
+            <stop offset="1" stop-color="#111214"/>
+          </radialGradient>
+          <filter id="f-shadow" x="-20%" y="-20%" width="140%" height="150%">
+            <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000" flood-opacity="0.7"/>
+          </filter>
+          <filter id="f-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="7" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="f-emboss" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow dx="0" dy="1.2" stdDeviation="0.4" flood-color="#9a9da3" flood-opacity="0.55"/>
+          </filter>
+          <clipPath id="c-body"><path id="body-path-clip" d="M20 200 A180 180 0 0 1 380 200 L380 338 Q380 382 336 382 L104 382 Q44 382 28 318 Q20 282 20 200 Z"/></clipPath>
+        </defs>
+
+        <!-- shell -->
+        <path class="shell" filter="url(#f-shadow)" fill="url(#g-body)" d="M20 200 A180 180 0 0 1 380 200 L380 338 Q380 382 336 382 L104 382 Q44 382 28 318 Q20 282 20 200 Z"/>
+        <g clip-path="url(#c-body)">
+          <!-- rubber grip band, top-left -->
+          <path d="M96.6 332.4 A168 168 0 0 1 289 57.5" fill="none" stroke="url(#g-grip)" stroke-width="34" stroke-linecap="round"/>
+          <path d="M289 57.5 Q318 70 338 92" fill="none" stroke="#1f2023" stroke-width="20" stroke-linecap="round"/>
+          <g id="grip-notches" stroke="#0d0e10" stroke-width="5" stroke-linecap="round" opacity="0.9"></g>
+          <!-- lower bumper seam -->
+          <path d="M40 352 L372 352" stroke="#25272a" stroke-width="2.5"/>
+          <path d="M210 352 L210 382" stroke="#25272a" stroke-width="2.5"/>
+          <!-- side build-button bump -->
+          <rect x="372" y="168" width="14" height="74" rx="5" fill="#1d1e21"/>
+        </g>
+        <path d="M20 200 A180 180 0 0 1 380 200" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+
+        <!-- face plate -->
+        <circle cx="200" cy="200" r="146" fill="#383b40" opacity="0.55"/>
+        <circle cx="200" cy="200" r="146" fill="none" stroke="#2c2e32" stroke-width="2"/>
+
+        <!-- embossed position labels -->
+        <g class="pos-labels" filter="url(#f-emboss)">
+          <text id="lbl-2" class="pos" x="200" y="70" text-anchor="middle" dominant-baseline="central">2</text>
+          <text id="lbl-3" class="pos" x="0" y="0" text-anchor="middle" dominant-baseline="central" transform="translate(330 200) rotate(90)">3</text>
+          <text id="lbl-1" class="pos" x="0" y="0" text-anchor="middle" dominant-baseline="central" transform="translate(70 200) rotate(-90)">1</text>
+          <g id="lbl-S" class="pos-station" transform="translate(200 330)">
+            <path d="M-16 13 L-16 -6 L-12 -14 L-8 -6 L-8 -2 L8 -2 L8 -6 L12 -14 L16 -6 L16 13 L5 13 L5 4 A5 5 0 0 0 -5 4 L-5 13 Z"/>
+            <path d="M-14 -6 L-10 -6 M10 -6 L14 -6" stroke="#2a2b2e" stroke-width="1.6"/>
           </g>
-          <g stroke="#fff" stroke-width="4" stroke-linecap="round">
-            <path d="M38 16 L42 25"/><path d="M50 12 L50 22"/><path d="M62 16 L58 25"/>
+        </g>
+
+        <!-- bezel + progress ring -->
+        <circle cx="200" cy="200" r="114" fill="none" stroke="#202124" stroke-width="7"/>
+        <circle id="ring-bar" class="ring-bar" cx="200" cy="200" r="114" fill="none" stroke-width="5" transform="rotate(-90 200 200)"/>
+
+        <!-- clear light ring -->
+        <circle cx="200" cy="200" r="104" fill="url(#g-glass)"/>
+        <g class="ring-lights">
+          <path id="rl-2" class="rl" d="M143.8 119.7 A98 98 0 0 1 256.2 119.7"/>
+          <path id="rl-3" class="rl" d="M280.3 143.8 A98 98 0 0 1 280.3 256.2"/>
+          <path id="rl-S" class="rl" d="M256.2 280.3 A98 98 0 0 1 143.8 280.3"/>
+          <path id="rl-1" class="rl" d="M119.7 256.2 A98 98 0 0 1 119.7 143.8"/>
+        </g>
+        <circle id="red-ring" class="red-ring" cx="200" cy="200" r="94" fill="none" stroke-width="14"/>
+        <path d="M128 150 A88 88 0 0 1 186 113" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round"/>
+        <path d="M272 250 A88 88 0 0 1 214 287" fill="none" stroke="#fff" stroke-opacity="0.12" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="200" cy="200" r="84" fill="#0c0d0f"/>
+      </svg>
+
+      <button class="core" id="core" aria-label="Auction button">
+        <svg class="handshake" viewBox="-64 -56 128 104" aria-hidden="true">
+          <g stroke="#f4f1ea" stroke-width="3.6" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke">
+            <path fill="#6c84d8" d="M60 -27 L60 0 L44 4 L18 4 C8 4 -2 -2 -10 -8 L-18 -14 C-24 -19 -18 -28 -9 -26 L12 -26 L36 -32 Z"/>
+            <path fill="#6c84d8" d="M-26 22 C-30 30 -20 36 -15 30 L-8 34 C-3 38 6 34 3 27 L-6 18 Z"/>
+            <path fill="#ec5a3f" d="M-60 -12 L-42 -18 L-24 -21 C-12 -23 -1 -18 10 -10 L39 10 C46 15 41 24 33 20 L29 17 L33 23 C36 29 29 33 24 27 L20 23 L22 29 C23 35 15 37 12 31 L8 26 C3 31 -5 32 -13 28 L-32 18 L-46 14 L-60 13 Z"/>
+          </g>
+          <g stroke="#f4f1ea" stroke-width="2.4" stroke-linecap="round" fill="none">
+            <path d="M24 9 L35 16"/><path d="M17 14 L27 22"/><path d="M10 18 L17 26"/>
+            <path d="M-44 -17 L-44 13"/><path d="M44 -31 L44 3"/>
+            <path d="M-8 -14 C0 -11 6 -6 9 -1"/>
+          </g>
+          <g stroke="#f4f1ea" stroke-width="3" stroke-linecap="round">
+            <path d="M-30 -42 L-27 -36"/><path d="M-15 -48 L-13 -41"/><path d="M0 -50 L0 -43"/><path d="M15 -48 L13 -41"/><path d="M30 -42 L27 -36"/>
           </g>
         </svg>
       </button>
@@ -71,16 +145,42 @@
   </section>
 
   <section class="controls">
-    <div class="controls-row">
-      <button id="btn-build" class="big-btn build">
-        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5 L40 14 L24 23 L8 14Z" fill="#fff6d6"/><path d="M8 14 L24 23 L24 42 L8 33Z" fill="#ffd166" opacity=".95"/><path d="M40 14 L24 23 L24 42 L40 33Z" fill="#e8a317"/></svg>
-        <span>BUILD</span>
-      </button>
-      <button id="btn-auction" class="big-btn auction">
-        <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="22" height="11" rx="3" transform="rotate(-40 18 14.5)" fill="#fff"/><path d="M22 22 L40 40" stroke="#fff" stroke-width="5" stroke-linecap="round"/><rect x="6" y="38" width="22" height="5" rx="2.5" fill="#fff" opacity=".85"/></svg>
-        <span>AUCTION</span>
-      </button>
-    </div>
+    <button id="btn-build" class="build-side" aria-label="Build button">
+      <span class="build-housing">
+        <span class="build-ridge"></span>
+        <span class="build-window">
+          <svg viewBox="0 0 140 96" aria-hidden="true">
+            <defs>
+              <linearGradient id="g-steel" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#8d8f94"/>
+                <stop offset="0.35" stop-color="#f6f6f4"/>
+                <stop offset="0.6" stop-color="#c9cacc"/>
+                <stop offset="1" stop-color="#7b7d82"/>
+              </linearGradient>
+              <linearGradient id="g-steel-side" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#6b6d72"/>
+                <stop offset="1" stop-color="#46484c"/>
+              </linearGradient>
+            </defs>
+            <g class="towers">
+              <path fill="url(#g-steel-side)" d="M34 30 L40 26 L40 96 L34 96 Z"/>
+              <path fill="url(#g-steel)" d="M20 30 L34 30 L34 96 L20 96 Z M23 24 L31 24 L31 30 L23 30 Z"/>
+              <path fill="url(#g-steel-side)" d="M58 12 L64 8 L64 96 L58 96 Z"/>
+              <path fill="url(#g-steel)" d="M40 12 L58 12 L58 96 L40 96 Z M44 4 L54 4 L54 12 L44 12 Z M48 -6 L50 -6 L50 4 L48 4 Z"/>
+              <path fill="url(#g-steel)" d="M62 40 L78 40 L78 96 L62 96 Z"/>
+              <path fill="url(#g-steel-side)" d="M96 18 L102 14 L102 96 L96 96 Z"/>
+              <path fill="url(#g-steel)" d="M78 18 L96 18 L96 96 L78 96 Z M82 10 L92 10 L92 18 L82 18 Z"/>
+              <path fill="url(#g-steel)" d="M100 44 L116 44 L116 96 L100 96 Z M103 38 L113 38 L113 44 L103 44 Z"/>
+              <g stroke="#55575c" stroke-width="0.8" opacity="0.7">
+                <path d="M27 34 V96 M49 16 V96 M70 44 V96 M87 22 V96 M108 48 V96"/>
+              </g>
+            </g>
+          </svg>
+        </span>
+        <span class="build-ridge"></span>
+      </span>
+      <span class="build-caption" id="build-caption">BUILD</span>
+    </button>
     <button id="btn-deal" class="deal-btn">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l3 2M9 2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
       Deal timer
@@ -92,6 +192,13 @@
 <section class="sheet" id="sheet" aria-hidden="true">
   <div class="sheet-grip"></div>
   <div class="bid-only">
+    <div class="voice-bar">
+      <button id="mic-btn" class="mic-btn" data-state="off" aria-label="Listen for spoken bids">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+        <span id="mic-label">Voice bids off</span>
+      </button>
+      <div class="heard" id="heard"></div>
+    </div>
     <button class="bid-top" id="bid-top" aria-label="Type an exact bid">
       <div class="bid-label">TOP BID <span class="bid-edit">tap to type</span></div>
       <div class="bid-amount" id="bid-amount">—</div>
@@ -142,9 +249,20 @@
     </header>
     <div class="modal-scroll">
       <section class="set-sec">
-        <h3>Players <small>for the bid tracker</small></h3>
+        <h3>Players <small>for bids, by name or colour</small></h3>
         <div id="players-list"></div>
         <button id="add-player" class="ghost-btn">+ Add player</button>
+      </section>
+      <section class="set-sec">
+        <h3>Voice</h3>
+        <label class="set-row toggle">
+          <span>Announcer<small>Reads out bids, the 5-second warning, "going once, going twice", the winner, and build results.</small></span>
+          <input type="checkbox" switch id="announce">
+        </label>
+        <label class="set-row toggle">
+          <span>Listen for spoken bids<small>During an auction, say a name or colour and an amount, like "Alex sixty", "Blue, one fifty" or "two hundred, Red". This works when the app is open in Safari; iPhone blocks speech listening in Home Screen apps.</small></span>
+          <input type="checkbox" switch id="listen">
+        </label>
       </section>
       <section class="set-sec">
         <h3>Build odds</h3>
@@ -189,6 +307,6 @@
 </div>
 
 <canvas id="fx" aria-hidden="true"></canvas>
-<script src="app.js"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
