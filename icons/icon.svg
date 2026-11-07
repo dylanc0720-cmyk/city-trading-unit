@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#05071c"/>
+      <stop offset="0.6" stop-color="#1a1442"/>
+      <stop offset="1" stop-color="#4b1f5c"/>
+    </linearGradient>
+    <radialGradient id="body" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3a3e47"/>
+      <stop offset="0.55" stop-color="#262930"/>
+      <stop offset="0.8" stop-color="#15171c"/>
+      <stop offset="1" stop-color="#0b0c10"/>
+    </radialGradient>
+    <radialGradient id="shine" cx="0.34" cy="0.26" r="0.4">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.42" cy="0.32" r="0.7">
+      <stop offset="0" stop-color="#4a4e58"/>
+      <stop offset="0.5" stop-color="#1c1e24"/>
+      <stop offset="1" stop-color="#0b0c10"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="30" stdDeviation="30" flood-color="#000" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  <!-- stars -->
+  <g fill="#fff" opacity="0.8">
+    <circle cx="120" cy="110" r="4"/><circle cx="260" cy="70" r="3"/><circle cx="900" cy="150" r="4"/><circle cx="780" cy="80" r="3"/><circle cx="60" cy="300" r="3"/><circle cx="960" cy="330" r="3"/>
+  </g>
+  <!-- skyline -->
+  <g fill="#120f33">
+    <rect x="0" y="700" width="110" height="324"/><rect x="100" y="620" width="90" height="404"/><rect x="180" y="760" width="120" height="264"/>
+    <rect x="720" y="650" width="100" height="374"/><rect x="810" y="560" width="90" height="464"/><rect x="890" y="720" width="134" height="304"/>
+    <rect x="852" y="500" width="6" height="60"/>
+  </g>
+  <circle cx="855" cy="498" r="9" fill="#ff3030"/>
+  <g fill="#ffd37a" opacity="0.85">
+    <rect x="120" y="650" width="14" height="18"/><rect x="150" y="690" width="14" height="18"/><rect x="120" y="730" width="14" height="18"/>
+    <rect x="830" y="600" width="14" height="18"/><rect x="860" y="640" width="14" height="18"/><rect x="830" y="700" width="14" height="18"/>
+    <rect x="740" y="690" width="14" height="18"/><rect x="20" y="740" width="14" height="18"/><rect x="920" y="760" width="14" height="18"/>
+  </g>
+  <!-- puck -->
+  <g filter="url(#shadow)">
+    <circle cx="512" cy="500" r="330" fill="url(#body)"/>
+  </g>
+  <circle cx="512" cy="500" r="330" fill="url(#shine)"/>
+  <circle cx="512" cy="500" r="300" fill="#1c1e24" stroke="#000" stroke-opacity="0.6" stroke-width="6"/>
+  <!-- rim segments -->
+  <g>
+    <circle cx="512" cy="248" r="40" fill="#34d399" filter="url(#glow)"/>
+    <circle cx="638" cy="282" r="34" fill="#38bdf8" opacity="0.35"/>
+    <circle cx="730" cy="374" r="34" fill="#fbbf24" opacity="0.35"/>
+    <circle cx="764" cy="500" r="34" fill="#c084fc" opacity="0.35"/>
+    <circle cx="730" cy="626" r="34" fill="#34d399" opacity="0.35"/>
+    <circle cx="638" cy="718" r="34" fill="#38bdf8" opacity="0.35"/>
+    <circle cx="512" cy="752" r="34" fill="#fbbf24" opacity="0.35"/>
+    <circle cx="386" cy="718" r="34" fill="#c084fc" opacity="0.35"/>
+    <circle cx="294" cy="626" r="34" fill="#34d399" opacity="0.35"/>
+    <circle cx="260" cy="500" r="34" fill="#38bdf8" opacity="0.35"/>
+    <circle cx="294" cy="374" r="34" fill="#fbbf24" opacity="0.35"/>
+    <circle cx="386" cy="282" r="34" fill="#c084fc" opacity="0.35"/>
+  </g>
+  <!-- red led ring -->
+  <circle cx="512" cy="500" r="168" fill="#0a0b0e"/>
+  <circle cx="512" cy="500" r="152" fill="none" stroke="#ff2d2d" stroke-width="14" filter="url(#glow)"/>
+  <!-- core button -->
+  <circle cx="512" cy="500" r="128" fill="url(#core)"/>
+  <!-- handshake -->
+  <g transform="translate(512 506) scale(2.05) translate(-50 -50)">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M90 78 L66 56 L44 47" stroke="#fff" stroke-width="25"/>
+      <path d="M90 78 L66 56 L44 47" stroke="#2c6be0" stroke-width="17"/>
+      <path d="M10 78 L34 56 L57 45" stroke="#fff" stroke-width="25"/>
+      <path d="M10 78 L34 56 L57 45" stroke="#e5383b" stroke-width="17"/>
+      <path d="M47 39 C55 36 62 39 64 45" stroke="#fff" stroke-width="12"/>
+      <path d="M47 39 C55 36 62 39 64 45" stroke="#2c6be0" stroke-width="6"/>
+      <path d="M43 52 L52 55 M46 47 L55 50" stroke="#fff" stroke-width="3"/>
+      <path d="M17 64 L29 77" stroke="#fff" stroke-width="5"/>
+      <path d="M83 64 L71 77" stroke="#fff" stroke-width="5"/>
+    </g>
+    <g stroke="#fff" stroke-width="4" stroke-linecap="round">
+      <path d="M38 16 L42 25"/><path d="M50 12 L50 22"/><path d="M62 16 L58 25"/>
+    </g>
+  </g>
+</svg>

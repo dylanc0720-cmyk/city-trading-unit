@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trading Unit">
+<meta name="theme-color" content="#070a1c">
+<title>City Trading Unit</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div id="alarm" aria-hidden="true"></div>
+
+<main id="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-dot"></span>CITY TRADING UNIT</div>
+    <div class="topbar-actions">
+      <button id="btn-sound" class="icon-btn" aria-label="Mute or unmute sound">
+        <svg class="ico-on" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+        <svg class="ico-off" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="btn-settings" class="icon-btn" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="display" id="display" data-tone="">
+    <div class="display-glass"></div>
+    <div class="display-label" id="display-label">READY</div>
+    <div class="display-main" id="display-main">READY</div>
+    <div class="display-sub" id="display-sub">Build once per turn · Banker starts auctions</div>
+  </section>
+
+  <section class="unit-wrap">
+    <div class="unit" id="unit">
+      <div class="unit-body"></div>
+      <svg class="ring" viewBox="0 0 300 300" aria-hidden="true">
+        <circle class="ring-track" cx="150" cy="150" r="146"/>
+        <circle class="ring-bar" id="ring-bar" cx="150" cy="150" r="146"/>
+      </svg>
+      <div class="segs" id="segs"></div>
+      <div class="core-well"></div>
+      <div class="red-led" id="red-led"></div>
+      <button class="core" id="core" aria-label="Auction button">
+        <svg class="handshake" viewBox="0 0 100 100" aria-hidden="true">
+          <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M90 78 L66 56 L44 47" stroke="#fff" stroke-width="25"/>
+            <path d="M90 78 L66 56 L44 47" stroke="#2c6be0" stroke-width="17"/>
+            <path d="M10 78 L34 56 L57 45" stroke="#fff" stroke-width="25"/>
+            <path d="M10 78 L34 56 L57 45" stroke="#e5383b" stroke-width="17"/>
+            <path d="M47 39 C55 36 62 39 64 45" stroke="#fff" stroke-width="12"/>
+            <path d="M47 39 C55 36 62 39 64 45" stroke="#2c6be0" stroke-width="6"/>
+            <path d="M43 52 L52 55 M46 47 L55 50" stroke="#fff" stroke-width="3"/>
+            <path d="M17 64 L29 77" stroke="#fff" stroke-width="5"/>
+            <path d="M83 64 L71 77" stroke="#fff" stroke-width="5"/>
+          </g>
+          <g stroke="#fff" stroke-width="4" stroke-linecap="round">
+            <path d="M38 16 L42 25"/><path d="M50 12 L50 22"/><path d="M62 16 L58 25"/>
+          </g>
+        </svg>
+      </button>
+    </div>
+  </section>
+
+  <section class="controls">
+    <div class="controls-row">
+      <button id="btn-build" class="big-btn build">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5 L40 14 L24 23 L8 14Z" fill="#fff6d6"/><path d="M8 14 L24 23 L24 42 L8 33Z" fill="#ffd166" opacity=".95"/><path d="M40 14 L24 23 L24 42 L40 33Z" fill="#e8a317"/></svg>
+        <span>BUILD</span>
+      </button>
+      <button id="btn-auction" class="big-btn auction">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="22" height="11" rx="3" transform="rotate(-40 18 14.5)" fill="#fff"/><path d="M22 22 L40 40" stroke="#fff" stroke-width="5" stroke-linecap="round"/><rect x="6" y="38" width="22" height="5" rx="2.5" fill="#fff" opacity=".85"/></svg>
+        <span>AUCTION</span>
+      </button>
+    </div>
+    <button id="btn-deal" class="deal-btn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l3 2M9 2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+      Deal timer
+    </button>
+  </section>
+</main>
+
+<!-- Auction / deal sheet -->
+<section class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="bid-only">
+    <button class="bid-top" id="bid-top" aria-label="Type an exact bid">
+      <div class="bid-label">TOP BID <span class="bid-edit">tap to type</span></div>
+      <div class="bid-amount" id="bid-amount">—</div>
+      <div class="bid-who" id="bid-who">Opening bid M10k or more</div>
+    </button>
+    <div class="bid-body" id="bid-body">
+      <div class="chips" id="chips"></div>
+      <div class="steps">
+        <button class="step neg" data-step="-10">−10k</button>
+        <button class="step" data-step="10">+10k</button>
+        <button class="step" data-step="50">+50k</button>
+        <button class="step" data-step="100">+100k</button>
+        <button class="step" data-step="500">+500k</button>
+      </div>
+    </div>
+    <div class="keypad" id="keypad" hidden>
+      <div class="kp-readout">M<span id="kp-val">0</span>k</div>
+      <div class="kp-grid">
+        <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+        <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+        <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+        <button data-k="back" class="kp-fn">⌫</button><button data-k="0">0</button><button data-k="ok" class="kp-ok">Set</button>
+      </div>
+    </div>
+  </div>
+  <div class="deal-only">
+    <div class="deal-title">Deal on the table</div>
+    <div class="deal-text">Agree before the light goes out, or there's no deal.</div>
+  </div>
+  <div class="sheet-actions">
+    <button id="act-undo" class="sa bid-only-inline">Undo</button>
+    <button id="act-cancel" class="sa">Cancel</button>
+    <button id="act-end" class="sa primary"><span class="bid-only-inline">Gavel now</span><span class="deal-only-inline">Deal done</span></button>
+  </div>
+</section>
+
+<!-- Result overlay -->
+<div class="overlay" id="overlay" hidden>
+  <div class="rc" id="rc"></div>
+</div>
+
+<!-- Settings -->
+<div class="modal" id="settings" hidden>
+  <div class="modal-card" role="dialog" aria-label="Settings">
+    <header class="modal-head">
+      <h2>Settings</h2>
+      <button id="settings-done" class="done-btn">Done</button>
+    </header>
+    <div class="modal-scroll">
+      <section class="set-sec">
+        <h3>Players <small>for the bid tracker</small></h3>
+        <div id="players-list"></div>
+        <button id="add-player" class="ghost-btn">+ Add player</button>
+      </section>
+      <section class="set-sec">
+        <h3>Build odds</h3>
+        <div class="presets">
+          <button data-preset="equal">Equal</button>
+          <button data-preset="rare">Station rarer</button>
+          <button data-preset="small">Small likelier</button>
+        </div>
+        <div id="odds-list"></div>
+      </section>
+      <section class="set-sec">
+        <h3>Auction timer</h3>
+        <div class="set-row">
+          <span>Length</span><b id="len-val">50s</b>
+        </div>
+        <input type="range" id="len" min="20" max="90" step="5">
+        <label class="set-row toggle">
+          <span>Surprise length<small>Ends at a random time between 20s and the length above. The countdown stays hidden until the 5-second warning.</small></span>
+          <input type="checkbox" switch id="surprise">
+        </label>
+      </section>
+      <section class="set-sec">
+        <h3>Sound</h3>
+        <div class="set-row"><span>Volume</span><b id="vol-val">80%</b></div>
+        <input type="range" id="vol" min="0" max="1" step="0.05">
+        <button id="test-sound" class="ghost-btn">Play test sound</button>
+        <p class="note">No sound? Turn the volume up. If it's still quiet, flip off the Silent switch on the side of the phone.</p>
+      </section>
+      <section class="set-sec">
+        <button id="reset" class="ghost-btn danger">Reset everything to defaults</button>
+        <p class="note">Digital stand-in for the trading unit from a 2009 city-building board game. Fan-made, not affiliated with Hasbro.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="install-hint" id="install-hint" hidden>
+  <div><b>Install as an app:</b> tap <span class="share-ico">
+    <svg viewBox="0 0 24 24"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 11H5v10h14V11h-2" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+  </span> Share, then <b>Add to Home Screen</b>.</div>
+  <button id="hint-close" aria-label="Dismiss">✕</button>
+</div>
+
+<canvas id="fx" aria-hidden="true"></canvas>
+<script src="app.js"></script>
+</body>
+</html>
