@@ -23,6 +23,20 @@
     muted: false,
     announce: true,
     listen: true,
+    musicVol: 0.45,
+    gameStarted: false,
+    secret: true,
+    turn: 0,
+    builtThisTurn: false,
+    roomCode: null,
+    hosting: false,
+    devices: {},
+  };
+  const PLAYER_MODE = new URLSearchParams(location.search).has('join');
+  // Filled in by net.js (phone link); harmless no-ops otherwise.
+  const hooks = {
+    emit() {}, event() {}, connectedCount: () => 0, isOnline: () => false,
+    playerRemoved() {}, joinOpened() {},
   };
   const KEY = 'ctu-settings-v1';
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -184,6 +198,8 @@
 
     return {
       unlock, applyVolume,
+      ctx() { init(); return ctx; },
+      out() { init(); return master; },
       press() {
         if (!live()) return; const t = T();
         tone(260, t, 0.09, { type: 'triangle', gain: 0.3, to: 120 });
@@ -277,6 +293,16 @@
         if (!live()) return; const t = T();
         [N.C5, N.E5, N.G5, N.C6].forEach((f, i) => tone(f, t + i * 0.07, 0.4, { type: 'triangle', gain: 0.2 }));
         bell(N.C6, t + 0.3, 1.2, 0.1);
+      },
+      drumroll(dur = 1.5) {
+        if (!live()) return; const t = T();
+        let x = 0;
+        while (x < dur) {
+          noise(t + x, 0.05, { type: 'bandpass', f: 200 + 80 * Math.random(), q: 0.9, gain: 0.08 + 0.3 * (x / dur) });
+          x += 0.06 - 0.025 * (x / dur);
+        }
+        tone(95, t + dur, 0.5, { type: 'sine', gain: 0.7, to: 50 });
+        noise(t + dur, 0.3, { type: 'lowpass', f: 1600, gain: 0.45 });
       },
       coin() {
         if (!live()) return; const t = T();
@@ -504,6 +530,375 @@
     return { amount: last ? last.k : 0, bidder };
   }
 
+
+  // ================= Shared audio helpers =================
+  function decodeAB(ab) {
+    const ctx = Sound.ctx();
+    return new Promise((res, rej) => {
+      try {
+        const pr = ctx.decodeAudioData(ab, res, rej);
+        if (pr && pr.then) pr.then(res, rej);
+      } catch (e) { rej(e); }
+    });
+  }
+
+  // ================= Recorded player names =================
+  const NameRec = (() => {
+    const buffers = {};
+    let dbp = null;
+    function db() {
+      if (!dbp) {
+        dbp = new Promise((res, rej) => {
+          try {
+            const r = indexedDB.open('ctu', 1);
+            r.onupgradeneeded = () => r.result.createObjectStore('names');
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+          } catch (e) { rej(e); }
+        });
+      }
+      return dbp;
+    }
+    async function idb(mode, fn) {
+      const d = await db();
+      return new Promise((res, rej) => {
+        const tx = d.transaction('names', mode);
+        const out = fn(tx.objectStore('names'));
+        tx.oncomplete = () => res(out && out.result);
+        tx.onerror = () => rej(tx.error);
+      });
+    }
+    const putBlob = (i, blob) => idb('readwrite', (st) => st.put(blob, 'p' + i)).catch(() => {});
+    const delBlob = (i) => idb('readwrite', (st) => st.delete('p' + i)).catch(() => {});
+    const getBlob = (i) => idb('readonly', (st) => st.get('p' + i)).catch(() => null);
+    const blobs = {};
+
+    function trim(b) {
+      const ctx = Sound.ctx();
+      const d = b.getChannelData(0), sr = b.sampleRate;
+      const win = Math.max(1, Math.floor(sr * 0.01));
+      const rms = [];
+      let peak = 0;
+      for (let i = 0; i < d.length; i += win) {
+        let sum = 0;
+        const e = Math.min(d.length, i + win);
+        for (let j = i; j < e; j++) sum += d[j] * d[j];
+        const r = Math.sqrt(sum / (e - i));
+        rms.push(r);
+        if (r > peak) peak = r;
+      }
+      if (peak < 0.008) return null;
+      const th = Math.max(0.005, peak * 0.12);
+      let a = rms.findIndex((r) => r > th);
+      let z = rms.length - 1;
+      while (z > a && rms[z] <= th) z--;
+      a = Math.max(0, a - 5) * win;
+      z = Math.min(d.length, (z + 10) * win);
+      const len = Math.min(z - a, Math.floor(sr * 2.6));
+      if (len < sr * 0.15) return null;
+      let pk = 0;
+      for (let j = a; j < a + len; j++) pk = Math.max(pk, Math.abs(d[j]));
+      const g = Math.min(6, 0.9 / (pk || 1));
+      const out = ctx.createBuffer(1, len, sr);
+      const o = out.getChannelData(0);
+      const fade = Math.floor(sr * 0.012);
+      for (let j = 0; j < len; j++) {
+        let v = d[a + j] * g;
+        if (j < fade) v *= j / fade;
+        if (j > len - fade) v *= (len - j) / fade;
+        o[j] = v;
+      }
+      return out;
+    }
+
+    let active = null;
+    async function record(i, ms = 2400) {
+      const got = await capture(ms);
+      if (!got) return null;
+      buffers[i] = got.buf;
+      blobs[i] = got.blob;
+      putBlob(i, got.blob);
+      return got.buf;
+    }
+    async function setBlob(i, blob) {
+      try {
+        const buf = trim(await decodeAB(await blob.arrayBuffer()));
+        if (!buf) return false;
+        buffers[i] = buf; blobs[i] = blob; putBlob(i, blob);
+        return true;
+      } catch (e) { return false; }
+    }
+    async function capture(ms = 2400) {
+      if (active) return null;
+      Sound.unlock();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const types = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+      const mime = window.MediaRecorder && types.find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise((res) => { rec.onstop = res; });
+      active = { rec, stream };
+      rec.start();
+      await sleep(ms);
+      try { rec.stop(); } catch (e) { /* ignore */ }
+      await stopped;
+      stream.getTracks().forEach((t) => t.stop());
+      active = null;
+      const blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/mp4' });
+      let buf = null;
+      try { buf = trim(await decodeAB(await blob.arrayBuffer())); } catch (e) { buf = null; }
+      if (!buf) return null;
+      return { blob, buf };
+    }
+    async function loadAll() {
+      for (let i = 0; i < 6; i++) {
+        try {
+          const blob = await getBlob(i);
+          if (blob) { blobs[i] = blob; buffers[i] = trim(await decodeAB(await blob.arrayBuffer())); }
+        } catch (e) { /* ignore */ }
+      }
+    }
+    async function removeAndShift(i, count) {
+      for (let j = i; j < count - 1; j++) {
+        buffers[j] = buffers[j + 1]; blobs[j] = blobs[j + 1];
+        if (blobs[j]) await putBlob(j, blobs[j]); else await delBlob(j);
+      }
+      delete buffers[count - 1]; delete blobs[count - 1];
+      await delBlob(count - 1);
+    }
+    return { record, capture, setBlob, loadAll, removeAndShift, get: (i) => buffers[i] || null, busy: () => !!active };
+  })();
+
+  // ================= Narrator (pre-recorded human voice) =================
+  const Narr = (() => {
+    let map = null, text = {}, buf = null, loading = null, playing = [], busyUntil = 0;
+    const PAD = 0.12;
+    const last = {};
+    const meta = fetch('voice/narration.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (j) { map = j.clips || {}; text = j.text || {}; }
+    }).catch(() => {});
+    function load() {
+      if (buf) return Promise.resolve();
+      if (!loading) {
+        loading = (async () => {
+          try {
+            await meta;
+            const ab = await fetch('voice/narration.m4a').then((r) => r.arrayBuffer());
+            // Decode at the voice's own 24 kHz to halve memory use; fall back to the main context.
+            const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            try {
+              const off = new OAC(1, 1, 24000);
+              buf = await new Promise((res, rej) => {
+                const pr = off.decodeAudioData(ab.slice(0), res, rej);
+                if (pr && pr.then) pr.then(res, rej);
+              });
+            } catch (e) {
+              buf = await decodeAB(ab);
+            }
+          } catch (e) { buf = null; loading = null; }
+        })();
+      }
+      return loading;
+    }
+    function pick(prefix) {
+      const keys = Object.keys(map || text).filter((k) => k.startsWith(prefix + '_') && /_\d+$/.test(k) && k.slice(prefix.length + 1).match(/^\d+$/));
+      if (!keys.length) return prefix;
+      let k;
+      do { k = keys[Math.floor(Math.random() * keys.length)]; } while (keys.length > 1 && k === last[prefix]);
+      last[prefix] = k;
+      return k;
+    }
+    function amountIds(k) {
+      if (k < 1000) return k % 5 === 0 && k >= 10 ? ['amt_' + k] : null;
+      const m = Math.floor(k / 1000), r = k % 1000;
+      if (m > 9) return null;
+      if (!r) return ['mil_' + m];
+      return r % 5 === 0 && r >= 10 ? ['mil_' + m, 'amt_' + r] : null;
+    }
+    // parts: 'id' | '@prefix' | {player:i} | {amount:k} | {pause:s}
+    function resolve(parts) {
+      const out = [];
+      for (const p of parts) {
+        if (p == null) continue;
+        if (typeof p === 'string') out.push({ id: p[0] === '@' ? pick(p.slice(1)) : p });
+        else if (p.pause) out.push({ pause: p.pause });
+        else if (p.amount != null) {
+          const ids = amountIds(p.amount);
+          if (ids) ids.forEach((id) => out.push({ id })); else out.push({ say: sayAmount(p.amount), missing: true });
+        } else if (p.player != null) {
+          const b = NameRec.get(p.player);
+          if (b) out.push({ buffer: b, say: playerName(p.player) });
+          else out.push({ id: 'col_' + p.player, say: playerName(p.player) });
+        }
+      }
+      return out;
+    }
+    function stop() {
+      playing.forEach((s) => { try { s.stop(); } catch (e) { /* ignore */ } });
+      playing = [];
+      busyUntil = 0;
+      Voice.stop();
+    }
+    function fallback(items) {
+      const line = items.map((it) => (it.say || (it.id && text[it.id]) || '')).filter(Boolean).join(' ');
+      if (line) Voice.say(line);
+    }
+    async function say(parts, { quiet = false } = {}) {
+      if (!S.announce || S.muted) return;
+      const ctx = Sound.ctx();
+      if (!ctx) return;
+      if (quiet && ctx.currentTime < busyUntil) return;
+      if (!buf) { load(); await Promise.race([loading || Promise.resolve(), sleep(2500)]); }
+      const items = resolve(parts);
+      const usable = buf && map && items.every((it) => it.pause || it.buffer || (it.id && map[it.id]));
+      stop();
+      if (!usable) { fallback(items); return; }
+      let t = ctx.currentTime + 0.03;
+      const t0 = t;
+      let prevTail = 0;
+      for (const it of items) {
+        if (it.pause) { t += it.pause; continue; }
+        const src = ctx.createBufferSource();
+        src.connect(Sound.out());
+        if (it.buffer) {
+          t = t - prevTail + 0.1;
+          src.buffer = it.buffer;
+          src.start(t);
+          t += it.buffer.duration;
+          prevTail = 0;
+        } else {
+          const c = map[it.id];
+          t = t - prevTail + 0.06 - PAD;
+          src.buffer = buf;
+          src.start(Math.max(ctx.currentTime, t), c[0], c[1]);
+          t += c[1];
+          prevTail = PAD;
+        }
+        playing.push(src);
+      }
+      busyUntil = t;
+      Music.duck(t0, t);
+    }
+    return { say, load, stop, ready: () => !!buf };
+  })();
+
+  // ================= Background music (public-domain ragtime) =================
+  const Music = (() => {
+    let list = [], order = [], pos = -1, el = null, gain = null, on = false, mode = 'normal', duckUntil = 0, duckT = 0;
+    const LEVEL = { normal: 1, auction: 0.5, warn: 0.28 };
+    const loadList = () => fetch('music/playlist.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : [])).then((j) => { list = Array.isArray(j) ? j : []; return list; }).catch(() => []);
+    let ready = loadList();
+    function graph() {
+      if (el) return true;
+      const ctx = Sound.ctx();
+      if (!ctx) return false;
+      el = new Audio();
+      el.preload = 'auto';
+      try {
+        const src = ctx.createMediaElementSource(el);
+        gain = ctx.createGain();
+        gain.gain.value = 0;
+        src.connect(gain);
+        gain.connect(ctx.destination);
+      } catch (e) { gain = null; }
+      el.addEventListener('ended', () => advance());
+      el.addEventListener('error', () => { if (on) setTimeout(() => advance(), 800); });
+      return true;
+    }
+    function level() {
+      const ctx = Sound.ctx();
+      const ducked = ctx && ctx.currentTime < duckUntil;
+      return S.muted ? 0 : S.musicVol * LEVEL[mode] * (ducked ? 0.35 : 1);
+    }
+    function apply(fast) {
+      if (!el) return;
+      const v = level();
+      if (gain) {
+        const ctx = Sound.ctx();
+        gain.gain.cancelScheduledValues(ctx.currentTime);
+        gain.gain.setTargetAtTime(v, ctx.currentTime, fast ? 0.02 : 0.18);
+      } else {
+        try { el.volume = Math.min(1, v); } catch (e) { /* iOS ignores */ }
+      }
+    }
+    function shuffle() {
+      const lastTrack = order.length ? order[order.length - 1] : -1;
+      order = list.map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      if (order.length > 1 && order[0] === lastTrack) [order[0], order[1]] = [order[1], order[0]];
+    }
+    function cue() {
+      const t = list[order[pos]];
+      el.src = 'music/' + t.file;
+      return t;
+    }
+    function advance() {
+      if (!list.length || !el) return;
+      pos++;
+      if (pos >= order.length) { shuffle(); pos = 0; }
+      const t = cue();
+      if (on) { el.play().catch(() => {}); toast('♪ ' + t.title + ' — ' + t.composer); }
+      ui();
+    }
+    async function start() {
+      Sound.unlock();
+      if (!graph()) return;
+      await ready;
+      if (!list.length) { ready = loadList(); await ready; }
+      if (!list.length) { toast('Music needs an internet connection'); return; }
+      if (pos < 0) { shuffle(); pos = 0; cue(); }
+      on = true;
+      apply(true);
+      try {
+        await el.play();
+        const t = list[order[pos]];
+        toast('♪ ' + t.title + ' — ' + t.composer);
+      } catch (e) { on = false; }
+      ui();
+    }
+    function stop() { on = false; if (el) el.pause(); ui(); }
+    function ui() {
+      const b = $('#btn-music');
+      if (b) b.classList.toggle('on', on);
+      const n = $('#now-playing');
+      if (n) {
+        const t = pos >= 0 ? list[order[pos]] : null;
+        n.textContent = t ? `${on ? 'Playing' : 'Paused'}: ${t.title} — ${t.composer}` : 'Not started';
+      }
+    }
+    function duck(from, until) {
+      duckUntil = Math.max(duckUntil, until);
+      apply();
+      clearTimeout(duckT);
+      const ctx = Sound.ctx();
+      duckT = setTimeout(() => apply(), Math.max(0, (until - ctx.currentTime) * 1000) + 60);
+    }
+    return {
+      start, stop,
+      toggle() { on ? stop() : start(); },
+      next() { if (!el) { start(); return; } advance(); },
+      setMode(m) { mode = m; apply(); },
+      duck, apply, ui,
+      get ready() { return ready; },
+      get on() { return on; },
+    };
+  })();
+
+  // ---- small toast ----
+  let toastT = 0;
+  function toast(msg) {
+    const t = $('#toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => t.classList.remove('show'), 3800);
+  }
+
   // ================= Screen wake lock =================
   let wakeLock = null;
   async function keepAwake() {
@@ -517,7 +912,13 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') keepAwake();
   });
-  function firstGesture() { Sound.unlock(); Voice.prime(); keepAwake(); }
+  let namesLoaded = false;
+  function firstGesture() {
+    Sound.unlock(); keepAwake();
+    if (PLAYER_MODE) return;
+    Voice.prime(); Narr.load();
+    if (!namesLoaded) { namesLoaded = true; NameRec.loadAll().then(() => renderAllPlayers()); }
+  }
   window.addEventListener('touchend', firstGesture, { passive: true });
   window.addEventListener('click', firstGesture);
 
@@ -697,7 +1098,8 @@
 
   // ================= Display =================
   const D = { el: $('#display'), label: $('#display-label'), main: $('#display-main'), sub: $('#display-sub') };
-  function setDisplay({ label, main, sub, tone = '' }) {
+  function setDisplay({ label, main, sub, tone = '', color = null }) {
+    if (color) D.el.style.setProperty('--lcd', color); else D.el.style.removeProperty('--lcd');
     if (label != null) D.label.textContent = label;
     if (main != null) D.main.innerHTML = main;
     if (sub != null) D.sub.textContent = sub;
@@ -707,7 +1109,13 @@
     if (D.main.animate) D.main.animate([{ transform: 'scale(1.14)' }, { transform: 'scale(1)' }], { duration: 140, easing: 'ease-out' });
   }
   function idleDisplay() {
-    setDisplay({ label: 'TRADING UNIT · ON', main: '<span class="word">READY</span>', sub: 'BUILD below · tap the handshake to auction', tone: '' });
+    body.classList.toggle('game-on', !!S.gameStarted);
+    if (S.gameStarted && S.players.length) {
+      const i = turnIndex();
+      setDisplay({ label: 'NOW PLAYING', main: `<span class="word">${esc(playerName(i).toUpperCase())}</span>`, sub: S.builtThisTurn ? 'Built this turn · Next turn when done' : 'BUILD below · handshake to auction', color: playerColor(i) });
+    } else {
+      setDisplay({ label: 'TRADING UNIT · ON', main: '<span class="word">READY</span>', sub: 'Tap ▶ New game to register players', tone: '' });
+    }
   }
 
   // ================= Ring positions (like the real unit: 2 top, 3 right, station bottom, 1 left) =================
@@ -777,8 +1185,10 @@
     hideOverlay();
     spinning = true;
     syncButtons();
+    hooks.emit();
     Sound.press();
     haptic();
+    if (Math.random() < 0.3) Narr.say(['@spin'], { quiet: true });
     const result = pickOutcome();
     const target = RING_ORDER.indexOf(result);
     const steps = 16 + ((target - spinPos + 4) % 4) + 4 * Math.floor(rand() * 2);
@@ -805,7 +1215,7 @@
     haptic();
     if (result === 'S') {
       Sound.station();
-      setTimeout(() => Voice.say('Station! Build a station.'), 1100);
+      setTimeout(() => Narr.say(['@bS']), 1150);
       setDisplay({ label: 'BUILD PERMIT', main: TRAIN_SVG + '<span class="word">STATION</span>', sub: 'Build a station — no blocks this turn', tone: 'bS' });
       showOverlay(
         `<div class="rc-kicker">BUILD PERMIT</div><div class="rc-train">${TRAIN_SVG}</div><div class="rc-text">Build a <b>STATION</b><br>No blocks this turn</div><div class="rc-hint">TAP TO CLOSE</div>`,
@@ -813,7 +1223,7 @@
     } else {
       const n = Number(result);
       Sound.land(result);
-      setTimeout(() => Voice.say(n === 1 ? 'One block.' : `${n} blocks!`), 650);
+      setTimeout(() => Narr.say(['@b' + n]), 650);
       setDisplay({ label: 'BUILD PERMIT', main: `${n}<span class="unit-sfx">${n === 1 ? 'BLOCK' : 'BLOCKS'}</span>`, sub: `Build up to ${n} block${n > 1 ? 's' : ''} this turn`, tone: 'b' + n });
       const shades = { 1: ['#a7f3d0', '#34d399', '#059669'], 2: ['#bae6fd', '#38bdf8', '#0284c7'], 3: ['#fde68a', '#fbbf24', '#d97706'] }[n];
       const cubes = Array.from({ length: n }, (_, i) => CUBE_SVG(...shades).replace('<svg ', `<svg style="animation-delay:${0.25 + i * 0.18}s" `)).join('');
@@ -824,7 +1234,11 @@
     }
     bumpMain();
     spinning = false;
+    S.builtThisTurn = true;
+    save();
     syncButtons();
+    hooks.event({ t: 'build', value: result, by: turnIndex() });
+    hooks.emit();
   }
 
   // ================= AUCTION / DEAL timer =================
@@ -846,6 +1260,9 @@
     timer.lastSec = Math.ceil(timer.total);
     timer.lastHalf = Math.ceil(timer.total * 2);
     bid.amount = 0; bid.bidder = null; bid.history = [];
+    timer.sealed = mode === 'auction' && S.secret !== false && hooks.connectedCount() > 0;
+    sealed.bids = {}; sealed.passes = new Set(); sealed.allIn = false; sealed.kpFor = null;
+    body.classList.toggle('sealed', timer.sealed);
     closeKeypad();
     light(-1);
     body.classList.add('in-timer', 'led-pulse');
@@ -860,9 +1277,12 @@
     if (mode === 'deal') Sound.dealStart(); else Sound.auctionStart();
     lastAnnounced = '';
     timer.said1 = false; timer.said2 = false;
-    setTimeout(() => { if (timer.running) Voice.say(mode === 'deal' ? 'Deal timer. Make your deal.' : 'Auction open! Place your bids.'); }, 550);
-    startListening();
+    timer.changes = 0; timer.lastBidder = null; timer.saidWar = false; timer.jumps = 0; timer.lastSpoken = 0;
+    Music.setMode('auction');
+    setTimeout(() => { if (timer.running) Narr.say([mode === 'deal' ? '@d_open' : timer.sealed ? '@sealed' : '@a_open']); }, 550);
+    if (timer.sealed) { setMic('off'); renderSealed(); } else startListening();
     syncButtons();
+    hooks.emit();
     cancelArmed = false; $('#act-cancel').classList.remove('confirm'); $('#act-cancel').textContent = 'Cancel';
     loop();
   }
@@ -882,11 +1302,13 @@
       body.classList.add('warn');
       Sound.warnStart();
       haptic();
-      Voice.say(timer.mode === 'deal' ? 'Five seconds left!' : 'Five seconds! Final bids!');
+      Music.setMode('warn');
+      Narr.say([timer.mode === 'deal' ? 'd_warn' : '@warn']);
+      hooks.emit();
     }
     if (timer.phase === 'warn' && timer.mode === 'auction') {
-      if (!timer.said1 && remaining <= 3.3) { timer.said1 = true; Voice.say('Going once!'); }
-      else if (!timer.said2 && remaining <= 1.75) { timer.said2 = true; Voice.say('Going twice!'); }
+      if (!timer.said1 && remaining <= 3.4) { timer.said1 = true; Narr.say(['once']); }
+      else if (!timer.said2 && remaining <= 1.8) { timer.said2 = true; Narr.say(['twice']); }
     }
     const sec = Math.ceil(remaining);
     const half = Math.ceil(remaining * 2);
@@ -912,8 +1334,9 @@
     let sub;
     if (warn) sub = isDeal ? 'Last 5 seconds — agree now!' : 'Last 5 seconds — final bids!';
     else if (isDeal) sub = 'Make a deal before time runs out';
+    else if (timer.sealed) sub = `${Object.keys(sealed.bids).length + sealed.passes.size} of ${S.players.length} secret bids in`;
     else sub = bid.amount ? `Top bid ${fmt(bid.amount)}${bid.bidder != null ? ' · ' + playerName(bid.bidder) : ''}` : 'Opening bid M10k or more';
-    const label = (isDeal ? 'DEAL TIMER' : 'AUCTION') + (warn ? ' · CLOSING' : timer.surprise ? ' · SURPRISE END' : isDeal ? ' · TALKS OPEN' : ' · BIDDING OPEN');
+    const label = (isDeal ? 'DEAL TIMER' : timer.sealed ? 'SECRET AUCTION' : 'AUCTION') + (warn ? ' · CLOSING' : timer.surprise ? ' · SURPRISE END' : isDeal ? ' · TALKS OPEN' : ' · BIDDING OPEN');
     if (D.main.innerHTML !== main) D.main.innerHTML = main;
     if (D.sub.textContent !== sub) D.sub.textContent = sub;
     if (D.label.textContent !== label) D.label.textContent = label;
@@ -924,12 +1347,14 @@
     timer.running = false;
     clearTimeout(announceTimer);
     Listener.stop();
+    Music.setMode('normal');
     cancelAnimationFrame(timer.raf);
     body.classList.remove('in-timer', 'led-pulse', 'warn', 'surprise', 'keypad-open');
     sheet.classList.remove('open');
     sheet.setAttribute('aria-hidden', 'true');
     ringBar.style.strokeDashoffset = String(RING_C);
     syncButtons();
+    hooks.emit();
     // let the deal class linger until the sheet slides away
     setTimeout(() => { if (!timer.running) body.classList.remove('deal'); }, 400);
   }
@@ -937,35 +1362,44 @@
   function finishTimer(reason) {
     if (!timer.running) return;
     const mode = timer.mode;
+    const wasSealed = !!timer.sealed;
     stopTimerUI();
+    setTimeout(() => { if (!timer.running) body.classList.remove('sealed'); }, 400);
     haptic();
     if (reason === 'cancel') {
       Sound.cancel();
-      Voice.say(mode === 'deal' ? 'Deal cancelled.' : 'Auction cancelled.');
+      Narr.say(['@cancel']);
+      hooks.event({ t: 'cancel', mode });
       setDisplay({ label: mode === 'deal' ? 'DEAL TIMER' : 'AUCTION', main: '<span class="word">CANCELLED</span>', sub: 'Nothing changed hands', tone: '' });
       return;
     }
     if (mode === 'deal') {
       if (reason === 'done') {
         Sound.dealDone();
-        Voice.say('Deal!');
+        Narr.say(['@d_done']);
+        hooks.event({ t: 'deal', ok: true });
         FX.confetti(['#38bdf8', '#7dd3fc', '#ffffff', '#fbbf24']);
         setDisplay({ label: 'DEAL TIMER', main: '<span class="word">DEAL!</span>', sub: 'Shake on it', tone: 'deal' });
         showOverlay(`<div class="rc-kicker">DEAL TIMER</div><div class="stamp">DEAL!</div><div class="rc-text">Agreed in time. Swap the goods.</div><div class="rc-hint">TAP TO CLOSE</div>`, 'deal', 5000);
       } else {
         Sound.buzzer();
-        setTimeout(() => Voice.say("Time's up! No deal."), 700);
+        setTimeout(() => Narr.say(['@d_time']), 700);
+        hooks.event({ t: 'deal', ok: false });
         setDisplay({ label: 'DEAL TIMER', main: '<span class="word">TIME</span>', sub: 'No agreement, no deal', tone: 'warn' });
         showOverlay(`<div class="rc-kicker">DEAL TIMER</div><div class="stamp">TIME!</div><div class="rc-text">No agreement means <b>no deal</b></div><div class="rc-hint">TAP TO CLOSE</div>`, 'nobid', 6000);
       }
       return;
     }
     // auction
+    if (wasSealed) { revealSealed(); return; }
     if (bid.amount > 0) {
+      hooks.event({ t: 'sold', winner: bid.bidder, amount: bid.amount, bids: null });
       Sound.gavel();
       const who = bid.bidder != null ? playerName(bid.bidder) : 'Top bidder';
-      const soldLine = bid.bidder != null ? `Sold! To ${who}, for ${sayAmount(bid.amount)}.` : `Sold, for ${sayAmount(bid.amount)}!`;
-      setTimeout(() => Voice.say(soldLine), 950);
+      const soldParts = bid.bidder != null
+        ? ['sold_to', { player: bid.bidder }, 'for', { amount: bid.amount }, { pause: 0.3 }, '@tail']
+        : ['sold_for', { amount: bid.amount }, { pause: 0.3 }, '@tail'];
+      setTimeout(() => Narr.say(soldParts), 950);
       const col = bid.bidder != null ? playerColor(bid.bidder) : '#fff';
       setTimeout(() => FX.confetti(['#4ade80', '#fbbf24', '#ffffff', col]), 1000);
       setDisplay({ label: 'SOLD', main: fmt(bid.amount), sub: `to ${who} — pay the Banker`, tone: 'sold' });
@@ -974,10 +1408,119 @@
         'sold', 0);
     } else {
       Sound.noBids();
-      Voice.say('No bids. The district stays with the bank.');
+      Narr.say(['@nobid']);
+      hooks.event({ t: 'sold', winner: null, amount: 0, bids: null });
       setDisplay({ label: 'AUCTION', main: '<span class="word">NO BIDS</span>', sub: 'The district stays with the bank', tone: '' });
       showOverlay(`<div class="rc-kicker">AUCTION</div><div class="stamp">NO BIDS</div><div class="rc-text">The district stays with the bank</div><div class="rc-hint">TAP TO CLOSE</div>`, 'nobid', 6000);
     }
+  }
+
+  // ---- Secret (sealed) bids from phones ----
+  const sealed = { bids: {}, passes: new Set(), allIn: false, kpFor: null };
+  const sealedActive = () => timer.running && timer.mode === 'auction' && !!timer.sealed;
+  function sealedBid(i, amount) {
+    if (!sealedActive() || !(i >= 0 && i < S.players.length)) return false;
+    amount = Math.round(Number(amount) || 0);
+    if (amount < 10 || amount > 100000) return false;
+    const prev = sealed.bids[i];
+    sealed.bids[i] = { amount, t: prev && prev.amount === amount ? prev.t : performance.now() };
+    sealed.passes.delete(i);
+    Sound.coin(); haptic();
+    renderSealed(); hooks.emit(); checkAllIn();
+    return true;
+  }
+  function sealedPass(i) {
+    if (!sealedActive() || !(i >= 0 && i < S.players.length)) return;
+    delete sealed.bids[i];
+    sealed.passes.add(i);
+    Sound.click();
+    renderSealed(); hooks.emit(); checkAllIn();
+  }
+  function checkAllIn() {
+    if (sealed.allIn) return;
+    for (let i = 0; i < S.players.length; i++) if (!sealed.bids[i] && !sealed.passes.has(i)) return;
+    sealed.allIn = true;
+    Narr.say(['allin']);
+    setTimeout(() => { if (sealedActive()) finishTimer('allin'); }, 1500);
+  }
+  function renderSealed() {
+    $$('.chip', chipsEl).forEach((c) => {
+      const i = Number(c.dataset.i);
+      const st = sealed.bids[i] ? 'in' : sealed.passes.has(i) ? 'pass' : 'wait';
+      c.dataset.sealed = st;
+      let tag = c.querySelector('.st');
+      if (!tag) { tag = document.createElement('span'); tag.className = 'st'; c.appendChild(tag); }
+      tag.textContent = st === 'in' ? '✓' : st === 'pass' ? 'pass' : hooks.isOnline(i) ? '📱' : '…';
+    });
+    const n = Object.keys(sealed.bids).length + sealed.passes.size;
+    $('#sealed-count').textContent = `${n} of ${S.players.length} in`;
+  }
+  function revealSealed() {
+    const entries = S.players.map((_, i) => ({ i, b: sealed.bids[i] || null, pass: sealed.passes.has(i) }));
+    const ranked = entries.filter((e) => e.b).sort((a, b) => b.b.amount - a.b.amount || a.b.t - b.b.t);
+    const summary = entries.map((e) => ({ i: e.i, amount: e.b ? e.b.amount : null, pass: e.pass }));
+    if (!ranked.length) {
+      Sound.noBids();
+      Narr.say(['@nobid']);
+      hooks.event({ t: 'sold', winner: null, amount: 0, bids: summary });
+      setDisplay({ label: 'SECRET AUCTION', main: '<span class="word">NO BIDS</span>', sub: 'The district stays with the bank', tone: '' });
+      showOverlay(`<div class="rc-kicker">SECRET AUCTION</div><div class="stamp">NO BIDS</div><div class="rc-text">The district stays with the bank</div><div class="rc-hint">TAP TO CLOSE</div>`, 'nobid', 6000);
+      return;
+    }
+    const win = ranked[0];
+    const tie = ranked.length > 1 && ranked[1].b.amount === win.b.amount;
+    hooks.event({ t: 'reveal' });
+    setDisplay({ label: 'SECRET AUCTION', main: '<span class="word">• • •</span>', sub: 'The envelope, please…', tone: 'auction' });
+    Narr.say(['envelope']);
+    Sound.drumroll(1.5);
+    setTimeout(() => {
+      bid.amount = win.b.amount; bid.bidder = win.i;
+      Sound.gavel();
+      setTimeout(() => Narr.say([...(tie ? ['tie', { pause: 0.2 }] : []), 'sold_to', { player: win.i }, 'for', { amount: win.b.amount }, { pause: 0.25 }, '@tail']), 950);
+      const col = playerColor(win.i);
+      setTimeout(() => FX.confetti(['#4ade80', '#fbbf24', '#ffffff', col]), 1000);
+      setDisplay({ label: 'SOLD', main: fmt(win.b.amount), sub: `to ${playerName(win.i)} — pay the Banker`, tone: 'sold' });
+      const order = [...ranked, ...entries.filter((e) => !e.b)];
+      const rows = order.map((e, k) => `<li style="--c:${playerColor(e.i)};animation-delay:${0.5 + k * 0.18}s"><span class="dot"></span><span class="nm">${esc(playerName(e.i))}</span><b>${e.b ? fmt(e.b.amount) : e.pass ? 'pass' : '—'}</b></li>`).join('');
+      showOverlay(
+        `<div class="rc-kicker">SECRET AUCTION${tie ? ' · TIE, FIRST BID WINS' : ''}</div><div class="stamp">SOLD!</div><div class="rc-who" style="--who:${col}">${esc(playerName(win.i))}</div><div class="rc-amt">${fmt(win.b.amount)}</div><ul class="bid-list">${rows}</ul><div class="rc-hint">TAP TO CLOSE</div>`,
+        'sold', 0);
+      hooks.event({ t: 'sold', winner: win.i, amount: win.b.amount, bids: summary, tie });
+    }, 1600);
+  }
+
+  // ================= Turns =================
+  function turnIndex() {
+    const n = S.players.length || 1;
+    return (((S.turn | 0) % n) + n) % n;
+  }
+  function setTurn(i, announce = true) {
+    S.turn = i;
+    S.builtThisTurn = false;
+    save();
+    idleDisplay();
+    hooks.emit();
+    hooks.event({ t: 'turn', index: i });
+    if (announce) { Sound.dealStart(); Narr.say([{ player: i }, { pause: 0.06 }, '@turn']); }
+  }
+  function nextTurn() {
+    if (timer.running || spinning || !S.players.length) return;
+    hideOverlay();
+    setTurn((turnIndex() + 1) % S.players.length);
+  }
+
+  function publicState() {
+    const rem = timer.running ? Math.max(0, timer.total - (performance.now() - timer.start) / 1000) : 0;
+    return {
+      players: S.players.map((_, i) => ({ name: playerName(i), color: playerColor(i), online: hooks.isOnline(i) })),
+      turn: turnIndex(),
+      started: !!S.gameStarted,
+      built: !!S.builtThisTurn,
+      spinning,
+      timer: timer.running ? { mode: timer.mode, sealed: !!timer.sealed, remaining: rem, total: timer.total, warn: timer.phase === 'warn', surprise: !!timer.surprise } : null,
+      sealedIn: sealedActive() ? Object.keys(sealed.bids).map(Number) : [],
+      passes: sealedActive() ? [...sealed.passes] : [],
+    };
   }
 
   // ---- Bid tracker ----
@@ -1004,11 +1547,9 @@
     const key = bid.amount + '|' + bid.bidder;
     if (timer.running && timer.mode === 'auction' && bid.amount && key !== lastAnnounced) {
       lastAnnounced = key;
+      if (bid.bidder != null && bid.bidder !== timer.lastBidder) { timer.changes++; timer.lastBidder = bid.bidder; }
       clearTimeout(announceTimer);
-      announceTimer = setTimeout(() => {
-        if (!timer.running) return;
-        Voice.say(sayAmount(bid.amount) + (bid.bidder != null ? ', ' + playerName(bid.bidder) : ''));
-      }, 450);
+      announceTimer = setTimeout(announceBid, 450);
     }
     if (timer.running) renderTimerDisplay(Math.max(0, timer.total - (performance.now() - timer.start) / 1000));
   }
@@ -1042,6 +1583,18 @@
     bid.amount = prev.amount; bid.bidder = prev.bidder;
     Sound.undo();
     renderBid();
+  }
+
+  function announceBid() {
+    if (!timer.running || !bid.amount) return;
+    const parts = [];
+    if (timer.lastSpoken && bid.amount - timer.lastSpoken >= 200 && timer.jumps < 2) { timer.jumps++; parts.push('@jump', { pause: 0.12 }); }
+    parts.push(Math.random() < 0.7 ? 'i_have' : 'bid_is', { amount: bid.amount });
+    if (bid.bidder != null) parts.push('from', { player: bid.bidder });
+    if (!timer.saidWar && timer.changes >= 4) { timer.saidWar = true; parts.push({ pause: 0.25 }, '@war'); }
+    else if (timer.phase !== 'warn' && Math.random() < 0.3) parts.push({ pause: 0.25 }, '@more');
+    timer.lastSpoken = bid.amount;
+    Narr.say(parts);
   }
 
   // ---- Voice bids glue ----
@@ -1115,6 +1668,7 @@
     if (timer.mode !== 'auction') return;
     kp = '';
     kpVal.textContent = '0';
+    $('#kp-for').textContent = sealedActive() && sealed.kpFor != null ? `Secret bid for ${playerName(sealed.kpFor)}` : '';
     keypad.hidden = false;
     body.classList.add('keypad-open');
     Sound.click();
@@ -1129,6 +1683,12 @@
     const k = b.dataset.k;
     if (k === 'ok') {
       const v = parseInt(kp, 10) || 0;
+      if (sealedActive()) {
+        if (v >= 10 && sealed.kpFor != null) sealedBid(sealed.kpFor, v); else Sound.undo();
+        sealed.kpFor = null;
+        closeKeypad();
+        return;
+      }
       if (v >= 10) {
         snapshot();
         bid.amount = v;
@@ -1154,7 +1714,9 @@
   $('#bid-top').addEventListener('click', () => (keypad.hidden ? openKeypad() : closeKeypad()));
   chipsEl.addEventListener('click', (e) => {
     const c = e.target.closest('.chip');
-    if (c) pickBidder(Number(c.dataset.i));
+    if (!c) return;
+    if (sealedActive()) { sealed.kpFor = Number(c.dataset.i); openKeypad(); return; }
+    pickBidder(Number(c.dataset.i));
   });
   $$('.step').forEach((b) => b.addEventListener('click', () => step(Number(b.dataset.step))));
   $('#act-undo').addEventListener('click', undo);
@@ -1174,6 +1736,7 @@
     finishTimer('cancel');
   });
   $('#act-end').addEventListener('click', () => finishTimer(timer.mode === 'deal' ? 'done' : 'gavel'));
+  $('#btn-next').addEventListener('click', () => { Sound.click(); nextTurn(); });
 
   // ================= Main buttons =================
   btnBuild.addEventListener('click', doBuild);
@@ -1183,36 +1746,131 @@
   // ================= Sound toggle =================
   function syncMute() { body.classList.toggle('muted', !!S.muted); Sound.applyVolume(); }
   $('#btn-sound').addEventListener('click', () => {
-    S.muted = !S.muted; save(); syncMute();
+    S.muted = !S.muted; save(); syncMute(); Music.apply(true); if (S.muted) Narr.stop();
     if (!S.muted) Sound.click();
   });
   syncMute();
 
   // ================= Settings =================
   const settingsEl = $('#settings');
-  const playersList = $('#players-list'), oddsList = $('#odds-list');
-  function renderPlayers() {
-    playersList.innerHTML = S.players.map((n, i) =>
-      `<div class="player-row"><span class="dot" style="background:${playerColor(i)};color:${playerColor(i)}"></span><input type="text" value="${esc(n)}" data-i="${i}" maxlength="14" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Player ${i + 1}"><button class="del" data-i="${i}" aria-label="Remove player" ${S.players.length <= 2 ? 'disabled style="opacity:.3"' : ''}>✕</button></div>`
-    ).join('');
-    $('#add-player').hidden = S.players.length >= 6;
+  const oddsList = $('#odds-list');
+  const playerContainers = [$('#players-list'), $('#ng-players')].filter(Boolean);
+  let recordingIdx = -1;
+  function playerRowsHTML() {
+    return S.players.map((n, i) => {
+      const has = !!NameRec.get(i);
+      const live = recordingIdx === i;
+      return `<div class="player-row">`
+        + `<span class="dot" style="background:${playerColor(i)};color:${playerColor(i)}"></span>`
+        + (hooks.isOnline(i) ? '<span class="on-phone" title="On their phone">📱</span>' : '')
+        + `<input type="text" value="${esc(n)}" data-i="${i}" maxlength="14" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Player ${i + 1}">`
+        + `<button class="rec${has ? ' has' : ''}${live ? ' live' : ''}" data-act="rec" data-i="${i}" aria-label="Record name">${live ? '<span class="rec-fill"></span>Say it' : has ? '↻' : '<i></i>Rec'}</button>`
+        + (has ? `<button class="play" data-act="play" data-i="${i}" aria-label="Play recorded name">▶</button>` : '')
+        + `<button class="del" data-act="del" data-i="${i}" aria-label="Remove player" ${S.players.length <= 2 ? 'disabled style="opacity:.3"' : ''}>✕</button>`
+        + `</div>`;
+    }).join('');
   }
-  playersList.addEventListener('input', (e) => {
-    const inp = e.target.closest('input');
-    if (!inp) return;
-    S.players[Number(inp.dataset.i)] = inp.value;
-    save();
+  function renderAllPlayers() {
+    const html = playerRowsHTML();
+    playerContainers.forEach((c) => {
+      const focused = c.contains(document.activeElement) ? document.activeElement.dataset.i : null;
+      c.innerHTML = html;
+      if (focused != null) { const inp = c.querySelector(`input[data-i="${focused}"]`); if (inp) { inp.focus(); const v = inp.value; inp.setSelectionRange(v.length, v.length); } }
+    });
+    $$('.add-player').forEach((b) => { b.hidden = S.players.length >= 6; });
+  }
+  const renderPlayers = renderAllPlayers;
+  async function recordName(i) {
+    if (recordingIdx >= 0 || NameRec.busy()) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) { toast("This browser can't record audio"); return; }
+    Narr.stop();
+    recordingIdx = i;
+    renderAllPlayers();
+    let buf = null, failed = false;
+    try { buf = await NameRec.record(i); } catch (e) { failed = true; }
+    recordingIdx = -1;
+    renderAllPlayers();
+    if (failed) { toast('Microphone blocked. Allow it for this site and try again.'); return; }
+    if (!buf) { Narr.say(['reg_retry']); return; }
+    Narr.say([{ player: i }, { pause: 0.25 }, '@reg_ok']);
+  }
+  playerContainers.forEach((c) => {
+    c.addEventListener('input', (e) => {
+      const inp = e.target.closest('input');
+      if (!inp) return;
+      S.players[Number(inp.dataset.i)] = inp.value;
+      save();
+      playerContainers.forEach((o) => { if (o !== c) { const x = o.querySelector(`input[data-i="${inp.dataset.i}"]`); if (x) x.value = inp.value; } });
+    });
+    c.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const i = Number(b.dataset.i);
+      if (b.dataset.act === 'rec') recordName(i);
+      else if (b.dataset.act === 'play') Narr.say([{ player: i }]);
+      else if (b.dataset.act === 'del') {
+        if (S.players.length <= 2) return;
+        await NameRec.removeAndShift(i, S.players.length);
+        S.players.splice(i, 1);
+        if (S.turn > i) S.turn--;
+        hooks.playerRemoved(i);
+        save(); renderAllPlayers(); hooks.emit();
+      }
+    });
   });
-  playersList.addEventListener('click', (e) => {
-    const b = e.target.closest('.del');
-    if (!b || S.players.length <= 2) return;
-    S.players.splice(Number(b.dataset.i), 1);
-    save(); renderPlayers();
-  });
-  $('#add-player').addEventListener('click', () => {
+  $$('.add-player').forEach((btn) => btn.addEventListener('click', () => {
     if (S.players.length >= 6) return;
     S.players.push(`Player ${S.players.length + 1}`);
-    save(); renderPlayers();
+    save(); renderAllPlayers(); hooks.emit();
+  }));
+
+  // ---- New game: register players, roll call, music ----
+  const ngEl = $('#newgame');
+  function openNewGame() {
+    if (timer.running || spinning) return;
+    Sound.click();
+    renderAllPlayers();
+    $('#ng-music').checked = true;
+    ngEl.hidden = false;
+    hooks.joinOpened();
+    if (!S.gameStarted) Narr.say(['@intro', { pause: 0.45 }, 'reg_prompt']);
+  }
+  function startGame() {
+    ngEl.hidden = true;
+    if (document.activeElement) document.activeElement.blur();
+    S.gameStarted = true;
+    S.turn = 0;
+    S.builtThisTurn = false;
+    save();
+    const n = S.players.length;
+    const parts = ['rollcall', { pause: 0.15 }];
+    for (let i = 0; i < n; i++) {
+      if (i === n - 1 && n > 1) parts.push('and', { pause: 0.05 });
+      parts.push({ player: i }, { pause: 0.18 });
+    }
+    parts.push({ pause: 0.3 }, '@start', { pause: 0.35 }, { player: 0 }, { pause: 0.06 }, '@turn');
+    Narr.say(parts);
+    if ($('#ng-music').checked && !Music.on) Music.start();
+    idleDisplay();
+    hooks.emit();
+    hooks.event({ t: 'turn', index: 0 });
+  }
+  $('#btn-newgame').addEventListener('click', openNewGame);
+  $('#ng-start').addEventListener('click', startGame);
+  $('#ng-close').addEventListener('click', () => { Sound.click(); Narr.stop(); ngEl.hidden = true; });
+
+  // ---- Music controls ----
+  $('#btn-music').addEventListener('click', () => { Sound.click(); Music.toggle(); });
+  $('#music-next').addEventListener('click', () => { Sound.click(); Music.next(); });
+  const mvolEl = $('#mvol'), mvolVal = $('#mvol-val');
+  mvolEl.addEventListener('input', () => { S.musicVol = Number(mvolEl.value); save(); mvolVal.textContent = Math.round(S.musicVol * 100) + '%'; Music.apply(true); });
+  Music.ready.then((list) => {
+    const c = $('#credits');
+    if (!c) return;
+    c.innerHTML = list.length
+      ? list.map((t) => `<li><b>${esc(t.title)}</b> — ${esc(t.composer)}${t.performer ? ', ' + esc(t.performer) : ''}${t.year ? ' (' + esc(t.year) + ')' : ''}. <a href="${esc(t.source)}" target="_blank" rel="noopener">${esc(t.license)}</a></li>`).join('')
+      : '<li>No tracks found.</li>';
+    $('#music-count').textContent = list.length ? `${list.length} tracks · ${Math.round(list.reduce((a, t) => a + (t.duration || 0), 0) / 60)} min, shuffled and looped` : '';
   });
 
   function renderOdds() {
@@ -1247,8 +1905,10 @@
     save(); renderOdds(); Sound.click();
   }));
 
+  const secretEl = $('#secret');
+  secretEl.addEventListener('change', () => { S.secret = secretEl.checked; save(); });
   const announceEl = $('#announce'), listenEl = $('#listen');
-  announceEl.addEventListener('change', () => { S.announce = announceEl.checked; save(); if (S.announce) Voice.say('Announcer on.'); else Voice.stop(); });
+  announceEl.addEventListener('change', () => { S.announce = announceEl.checked; save(); if (S.announce) Narr.say(['@reg_ok']); else Narr.stop(); });
   listenEl.addEventListener('change', () => { S.listen = listenEl.checked; save(); });
   const lenEl = $('#len'), lenVal = $('#len-val'), surpriseEl = $('#surprise'), volEl = $('#vol'), volVal = $('#vol-val');
   function renderTimerSettings() {
@@ -1256,8 +1916,11 @@
     lenVal.textContent = S.auctionSecs + 's' + (S.auctionSecs === 50 ? ' (original)' : '');
     surpriseEl.checked = !!S.surprise;
     announceEl.checked = S.announce !== false;
+    secretEl.checked = S.secret !== false;
     listenEl.checked = S.listen !== false;
     volEl.value = S.volume;
+    mvolEl.value = S.musicVol;
+    mvolVal.textContent = Math.round(S.musicVol * 100) + '%';
     volVal.textContent = Math.round(S.volume * 100) + '%';
   }
   lenEl.addEventListener('input', () => { S.auctionSecs = Number(lenEl.value); save(); renderTimerSettings(); });
@@ -1305,6 +1968,14 @@
   }
 
   // Debug hook for testing the odds in a console
+  window.CTU = {
+    get S() { return S; }, save, hooks, PLAYER_MODE,
+    playerName, playerColor, fmt, esc, toast, haptic, sleep, $, $$,
+    Sound, Narr, NameRec, FX, Sky,
+    showOverlay, hideOverlay, renderAllPlayers, publicState, doBuild, nextTurn, setTurn, sealedBid, sealedPass, idleDisplay,
+    get timer() { return timer; }, get spinning() { return spinning; },
+    TRAIN_SVG, CUBE_SVG, VALUE_COLOR,
+  };
   window.__ctu = {
     sample(n = 100000) {
       const c = { 1: 0, 2: 0, 3: 0, S: 0 };
@@ -1316,5 +1987,8 @@
     parseBid,
     hear: (text, key = 'test') => onHeard(key, text),
     voice: Voice,
+    narr: Narr,
+    names: NameRec,
+    music: Music,
   };
 })();
