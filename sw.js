@@ -1,20 +1,14 @@
-// Offline cache for the app shell and the narrator's voice.
-// Music streams from the network (range requests) and is cached only as whole files.
-const CACHE = 'ctu-v4';
+// Offline cache for the app shell. Music streams from the network.
+const CACHE = 'ctu-v5';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
-  './net.js',
-  './vendor/peerjs.min.js',
-  './vendor/qrcode.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './voice/narration.json',
-  './voice/narration.m4a',
   './music/playlist.json',
 ];
 

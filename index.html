@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 <canvas id="sky" aria-hidden="true"></canvas>
@@ -22,9 +22,6 @@
   <header class="topbar">
     <div class="brand"><span class="brand-dot"></span>CITY TRADING UNIT</div>
     <div class="topbar-actions">
-      <button id="btn-newgame" class="icon-btn ng-btn" aria-label="New game">
-        <svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
-      </button>
       <button id="btn-music" class="icon-btn music-btn" aria-label="Play or pause music">
         <svg viewBox="0 0 24 24"><path d="M9 18V6l11-2v12" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/></svg>
       </button>
@@ -187,66 +184,18 @@
       </span>
       <span class="build-caption" id="build-caption">BUILD</span>
     </button>
-    <div class="ctl-row">
-      <button id="btn-deal" class="deal-btn">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l3 2M9 2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
-        Deal timer
-      </button>
-      <button id="btn-next" class="deal-btn next-btn">Next turn ▸</button>
-    </div>
+    <button id="btn-deal" class="deal-btn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l3 2M9 2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+      Deal timer
+    </button>
   </section>
 </main>
 
-<!-- Auction / deal sheet -->
+<!-- Auction / deal bar -->
 <section class="sheet" id="sheet" aria-hidden="true">
-  <div class="sheet-grip"></div>
-  <div class="bid-only">
-    <div class="sealed-head">
-      <div class="bid-label">SECRET BIDS</div>
-      <div class="sealed-count" id="sealed-count">0 in</div>
-      <div class="sealed-hint">Players bid on their phones. Tap a player to type a bid for them.</div>
-    </div>
-    <div class="voice-bar">
-      <button id="mic-btn" class="mic-btn" data-state="off" aria-label="Listen for spoken bids">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-        <span id="mic-label">Voice bids off</span>
-      </button>
-      <div class="heard" id="heard"></div>
-    </div>
-    <button class="bid-top" id="bid-top" aria-label="Type an exact bid">
-      <div class="bid-label">TOP BID <span class="bid-edit">tap to type</span></div>
-      <div class="bid-amount" id="bid-amount">—</div>
-      <div class="bid-who" id="bid-who">Opening bid M10k or more</div>
-    </button>
-    <div class="bid-body" id="bid-body">
-      <div class="chips" id="chips"></div>
-      <div class="steps">
-        <button class="step neg" data-step="-10">−10k</button>
-        <button class="step" data-step="10">+10k</button>
-        <button class="step" data-step="50">+50k</button>
-        <button class="step" data-step="100">+100k</button>
-        <button class="step" data-step="500">+500k</button>
-      </div>
-    </div>
-    <div class="keypad" id="keypad" hidden>
-      <div class="kp-for" id="kp-for"></div>
-      <div class="kp-readout">M<span id="kp-val">0</span>k</div>
-      <div class="kp-grid">
-        <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
-        <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
-        <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
-        <button data-k="back" class="kp-fn">⌫</button><button data-k="0">0</button><button data-k="ok" class="kp-ok">Set</button>
-      </div>
-    </div>
-  </div>
-  <div class="deal-only">
-    <div class="deal-title">Deal on the table</div>
-    <div class="deal-text">Agree before the light goes out, or there's no deal.</div>
-  </div>
   <div class="sheet-actions">
-    <button id="act-undo" class="sa bid-only-inline">Undo</button>
     <button id="act-cancel" class="sa">Cancel</button>
-    <button id="act-end" class="sa primary"><span class="bid-only-inline"><span class="open-only">Gavel now</span><span class="sealed-only">Reveal now</span></span><span class="deal-only-inline">Deal done</span></button>
+    <button id="act-end" class="sa primary"><span class="bid-only-inline">Sold!</span><span class="deal-only-inline">Deal done</span></button>
   </div>
 </section>
 
@@ -264,28 +213,12 @@
     </header>
     <div class="modal-scroll">
       <section class="set-sec">
-        <h3>Players <small>type a name, tap Rec and say it</small></h3>
-        <div id="players-list"></div>
-        <button id="add-player" class="ghost-btn add-player">+ Add player</button>
-      </section>
-      <section class="set-sec">
-        <h3>Voice</h3>
-        <label class="set-row toggle">
-          <span>Narrator<small>The auctioneer calls bids, the 5-second warning, "going once, going twice", the winner, build results and the roll call. Players' recorded names are used where they exist.</small></span>
-          <input type="checkbox" switch id="announce">
-        </label>
-        <label class="set-row toggle">
-          <span>Listen for spoken bids<small>During an auction, say a name or colour and an amount, like "Alex sixty", "Blue, one fifty" or "two hundred, Red". This works when the app is open in Safari; iPhone blocks speech listening in Home Screen apps.</small></span>
-          <input type="checkbox" switch id="listen">
-        </label>
-      </section>
-      <section class="set-sec">
         <h3>Music <small id="music-count"></small></h3>
         <div class="set-row"><span>Music volume</span><b id="mvol-val">45%</b></div>
         <input type="range" id="mvol" min="0" max="1" step="0.05">
         <div class="now-playing" id="now-playing">Not started</div>
         <button id="music-next" class="ghost-btn">Next track</button>
-        <p class="note">The ♪ button at the top plays or pauses. Music gets quieter during auctions and while the narrator speaks.</p>
+        <p class="note">The ♪ button at the top plays or pauses. Music gets quieter during auctions.</p>
         <details class="credits"><summary>Track credits</summary><ul id="credits"></ul></details>
       </section>
       <section class="set-sec">
@@ -303,10 +236,6 @@
           <span>Length</span><b id="len-val">50s</b>
         </div>
         <input type="range" id="len" min="20" max="90" step="5">
-        <label class="set-row toggle">
-          <span>Secret bids from phones<small>When players have joined on their phones, auctions become sealed bids: everyone types a secret amount, and this phone reveals the winner.</small></span>
-          <input type="checkbox" switch id="secret">
-        </label>
         <label class="set-row toggle">
           <span>Surprise length<small>Ends at a random time between 20s and the length above. The countdown stays hidden until the 5-second warning.</small></span>
           <input type="checkbox" switch id="surprise">
@@ -327,114 +256,6 @@
   </div>
 </div>
 
-<!-- New game: register players -->
-<div class="modal" id="newgame" hidden>
-  <div class="modal-card" role="dialog" aria-label="New game">
-    <header class="modal-head">
-      <h2>New game</h2>
-      <button id="ng-close" class="done-btn subtle">Close</button>
-    </header>
-    <div class="modal-scroll">
-      <div class="join-box">
-        <div class="join-qr" id="join-qr"></div>
-        <div class="join-info">
-          <div class="join-title">Scan to join</div>
-          <div class="join-sub">Everyone scans with their phone camera to bid secretly and get "your turn" alerts.</div>
-          <div class="join-code">Room <b id="join-code">·····</b></div>
-          <div class="join-status" id="join-status">Starting…</div>
-        </div>
-      </div>
-      <p class="ng-lead">Players who scan appear below with their recorded names. For anyone without a phone, type their name, tap <b>Rec</b> and have them say it.</p>
-      <div id="ng-players"></div>
-      <button id="ng-add" class="ghost-btn add-player">+ Add player</button>
-      <label class="set-row toggle"><span>Start the music</span><input type="checkbox" switch id="ng-music" checked></label>
-      <button id="ng-start" class="start-btn">Start the game</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast" aria-live="polite"></div>
-
-<!-- Player phone screen (opened from the QR code) -->
-<main id="player-app" class="player-app" hidden>
-  <header class="topbar">
-    <div class="brand"><span class="brand-dot"></span>CITY TRADING UNIT</div>
-    <div class="p-conn" id="p-conn" data-s="connecting"><i></i><span id="p-conn-text">Connecting…</span></div>
-  </header>
-
-  <section class="p-card" id="p-join">
-    <div class="p-room">Room <b id="p-room"></b></div>
-    <h2>Join the game</h2>
-    <input id="p-name" class="p-input" maxlength="14" placeholder="Your name" autocomplete="off" autocorrect="off" spellcheck="false">
-    <button id="p-rec" class="p-rec"><i></i><span id="p-rec-text">Record your name</span><span class="rec-fill"></span></button>
-    <p class="p-hint">Tap, then say your name clearly. The auctioneer uses it all game.</p>
-    <button id="p-join-btn" class="start-btn">Join</button>
-  </section>
-
-  <section class="p-main" id="p-main" hidden>
-    <div class="p-me"><span class="dot" id="p-dot"></span><span id="p-me-name"></span><button id="p-edit" class="p-small">Edit</button></div>
-    <div class="p-turn" id="p-turn">Waiting for the game to start…</div>
-    <button id="p-build" class="build-side" disabled aria-label="Build">
-      <span class="build-housing">
-        <span class="build-ridge"></span>
-        <span class="build-window">
-          <svg viewBox="0 0 140 96" aria-hidden="true">
-            <defs>
-              <linearGradient id="pg-steel" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stop-color="#8d8f94"/>
-                <stop offset="0.35" stop-color="#f6f6f4"/>
-                <stop offset="0.6" stop-color="#c9cacc"/>
-                <stop offset="1" stop-color="#7b7d82"/>
-              </linearGradient>
-              <linearGradient id="pg-steel-side" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stop-color="#6b6d72"/>
-                <stop offset="1" stop-color="#46484c"/>
-              </linearGradient>
-            </defs>
-            <g class="towers">
-              <path fill="url(#pg-steel-side)" d="M34 30 L40 26 L40 96 L34 96 Z"/>
-              <path fill="url(#pg-steel)" d="M20 30 L34 30 L34 96 L20 96 Z M23 24 L31 24 L31 30 L23 30 Z"/>
-              <path fill="url(#pg-steel-side)" d="M58 12 L64 8 L64 96 L58 96 Z"/>
-              <path fill="url(#pg-steel)" d="M40 12 L58 12 L58 96 L40 96 Z M44 4 L54 4 L54 12 L44 12 Z M48 -6 L50 -6 L50 4 L48 4 Z"/>
-              <path fill="url(#pg-steel)" d="M62 40 L78 40 L78 96 L62 96 Z"/>
-              <path fill="url(#pg-steel-side)" d="M96 18 L102 14 L102 96 L96 96 Z"/>
-              <path fill="url(#pg-steel)" d="M78 18 L96 18 L96 96 L78 96 Z M82 10 L92 10 L92 18 L82 18 Z"/>
-              <path fill="url(#pg-steel)" d="M100 44 L116 44 L116 96 L100 96 Z M103 38 L113 38 L113 44 L103 44 Z"/>
-              <g stroke="#55575c" stroke-width="0.8" opacity="0.7">
-                <path d="M27 34 V96 M49 16 V96 M70 44 V96 M87 22 V96 M108 48 V96"/>
-              </g>
-            </g>
-          </svg>
-        </span>
-        <span class="build-ridge"></span>
-      </span>
-      <span class="build-caption" id="p-build-caption">BUILD</span>
-    </button>
-    <button id="p-end" class="deal-btn" disabled>End my turn</button>
-    <div class="p-players" id="p-players"></div>
-  </section>
-
-  <section class="p-timer" id="p-timer" hidden>
-    <div class="p-t-label" id="p-t-label">SECRET AUCTION</div>
-    <div class="p-t-ring">
-      <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" class="p-ring-track"/><circle cx="60" cy="60" r="54" class="p-ring-bar" id="p-ring"/></svg>
-      <div class="p-t-num" id="p-t-num">50</div>
-    </div>
-    <div class="p-bid" id="p-bid">
-      <div class="p-bid-amt">M<span id="p-bid-val">0</span>k</div>
-      <div class="p-bid-status" id="p-bid-status">Type your secret bid</div>
-      <div class="kp-grid p-kp" id="p-kp">
-        <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
-        <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
-        <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
-        <button data-k="back" class="kp-fn">⌫</button><button data-k="0">0</button><button data-k="00" class="kp-fn">00</button>
-      </div>
-      <div class="p-bid-actions"><button id="p-pass" class="sa">Pass</button><button id="p-submit" class="sa primary">Submit secret bid</button></div>
-    </div>
-    <div class="p-open" id="p-open">Shout your bids!</div>
-  </section>
-</main>
-
 <div class="install-hint" id="install-hint" hidden>
   <div><b>Install as an app:</b> tap <span class="share-ico">
     <svg viewBox="0 0 24 24"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 11H5v10h14V11h-2" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
@@ -442,10 +263,9 @@
   <button id="hint-close" aria-label="Dismiss">✕</button>
 </div>
 
+<div class="toast" id="toast" aria-live="polite"></div>
+
 <canvas id="fx" aria-hidden="true"></canvas>
-<script src="vendor/peerjs.min.js"></script>
-<script src="vendor/qrcode.js"></script>
-<script src="app.js?v=6"></script>
-<script src="net.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

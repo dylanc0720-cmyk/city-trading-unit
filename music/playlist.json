@@ -218,5 +218,125 @@
   "license": "Public domain",
   "source": "https://commons.wikimedia.org/wiki/File:James_Scott_-_Peace_and_Plenty_Rag_(1919).ogg",
   "duration": 183.1
+ },
+ {
+  "file": "23-victory-rag.m4a",
+  "title": "Victory Rag",
+  "composer": "James Scott",
+  "performer": "",
+  "year": "1921",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:James_Scott_-_Victory_Rag_(1921).ogg",
+  "duration": 204.2
+ },
+ {
+  "file": "24-silver-king-rag.m4a",
+  "title": "Silver King Rag",
+  "composer": "Charles L. Johnson",
+  "performer": "",
+  "year": "1909",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Charles_L._Johnson_-_Silver_King_Rag_(1909).ogg",
+  "duration": 210.6
+ },
+ {
+  "file": "25-kissing-bug-rag.m4a",
+  "title": "Kissing Bug Rag",
+  "composer": "Charles L. Johnson",
+  "performer": "",
+  "year": "1909",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Charles_L._Johnson_-_Kissing_Bug_Rag_(1909).ogg",
+  "duration": 198.3
+ },
+ {
+  "file": "26-kitten-on-the-keys.m4a",
+  "title": "Kitten on the Keys",
+  "composer": "Zez Confrey",
+  "performer": "Zez Confrey (1895-1971); file restored by Adam Cuerden",
+  "year": "1921",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Zez_Confrey_-_Kitten_on_the_Keys.ogg",
+  "duration": 213.3
+ },
+ {
+  "file": "27-dizzy-fingers.m4a",
+  "title": "Dizzy Fingers",
+  "composer": "Zez Confrey",
+  "performer": "Zez Confrey",
+  "year": "1923",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Dizzy_Fingers_by_Zez_Confrey_(1923,_Novelty_piano).opus",
+  "duration": 192.6
+ },
+ {
+  "file": "28-stumbling.m4a",
+  "title": "Stumbling",
+  "composer": "Zez Confrey",
+  "performer": "",
+  "year": "1922",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Zez_Confrey_-_Stumbling_(1922).ogg",
+  "duration": 236.9
+ },
+ {
+  "file": "29-twelfth-street-rag.m4a",
+  "title": "Twelfth Street Rag",
+  "composer": "Euday L. Bowman",
+  "performer": "",
+  "year": "1914",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Euday_L._Bowman_-_Twelfth_Street_Rag_(1914).ogg",
+  "duration": 165.0
+ },
+ {
+  "file": "30-fizz-water.m4a",
+  "title": "Fizz Water",
+  "composer": "Eubie Blake",
+  "performer": "",
+  "year": "1914",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Eubie_Blake_-_Fizz_Water_(1914).ogg",
+  "duration": 187.4
+ },
+ {
+  "file": "31-charleston-rag.m4a",
+  "title": "Charleston Rag",
+  "composer": "Eubie Blake",
+  "performer": "Eubie Blake",
+  "year": "",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:EubieBlake-CharlestonRag.ogg",
+  "duration": 162.4
+ },
+ {
+  "file": "32-blue-streak.m4a",
+  "title": "Blue Streak",
+  "composer": "Roy Bargy",
+  "performer": "Roy Bargy",
+  "year": "1921",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Blue_Streak_by_Roy_Bargy_(1921).opus",
+  "duration": 184.2
+ },
+ {
+  "file": "33-clover-club.m4a",
+  "title": "Clover Club",
+  "composer": "Felix Arndt",
+  "performer": "Felix Arndt",
+  "year": "1918",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:%22Clover_Club%22,_by_Felix_Arndt_(1918).opus",
+  "duration": 187.2
+ },
+ {
+  "file": "36-afghanistan-fox-trot.m4a",
+  "title": "Afghanistan (fox-trot)",
+  "composer": "Wilander & Donnelly",
+  "performer": "Charles A. Prince",
+  "year": "1920",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:%22Afghanistan%22_fox-trot_by_Charles_A._Prince%27s_Dance_Orchestra_(1920).mp3",
+  "duration": 193.9
  }
 ]
